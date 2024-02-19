@@ -19,9 +19,9 @@ void main() {
   });
 
   final web = RouteWebSocket(
-    '/oii',
+    '/websocket',
     middlewareWebSocket: (WebSocket socket) async {
-      socket.add('fala pow');
+      socket.add('Hello Word');
       socket.listen(
         (event) {
           print(event);
