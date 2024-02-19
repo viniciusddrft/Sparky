@@ -1,39 +1,150 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# Welcome to Sparky
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
+Sparky é pacote que ajuda na construção de apis rest de forma simples com suporte a websocket a autenticação jwt.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
+# Features
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+- Sistema de logs.
+- Suporte a webSocket.
+- Autenticação JWT.
+- Pipeline antes e depois do middleware principal.
 
-## Features
+# Como Usar
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
-
-## Usage
-
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
+## Criando uma rota simples
 
 ```dart
-const like = 'sample';
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+// Criação da rota passando um middleware que recebe todos os dados da request, e precisa retornar uma response.
+final  route1  =  RouteHttp.get('teste', middleware: (request) async {
+  return  Response.ok(body:  'Olá mundo');
+ });
+// inicialização do Sparky passando uma lista de rotas.
+Sparky.server(routes: [route1]);
+}
 ```
 
-## Additional information
+## Como personalizar o ip e porta
 
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+ Sparky.server(
+  routes: [...],
+  ip:  '0.0.0.0',
+  port:  8080,
+ );
+}
+```
+
+## Como Criar pipeline
+
+Você pode criar Adicionar N middlewares nas pipilenes .
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+Sparky.server(
+ routes: [...],
+ // Executa depois de executar a rota.
+ pipelineAfter:  Pipeline()..add((request)async  =>  null)..add((request)async  =>  null),
+ // Executa antes de executar a rota, pode retornar null ou uma Response, se for retornado uma response ele não executa a rota principal.
+ pipelineBefore:  Pipeline()..add((request) async {
+   ......
+   }),
+  );
+}
+```
+
+## Sistema de logs
+
+Ele por padrão implicitamente tem essa configuração mas você pode mudar esse enum para mostrar só logs de erros, pode escolher entre só mostrar ou salvar em um arquivo 'logs.txt'
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+ Sparky.server(
+  routes: [...],
+  logConfig:  LogConfig.showAndWriteLogs,
+  logType:  LogType.all
+ );
+}
+```
+
+## Como usar WebSockets
+
+Uma rota webSocket é uma Criada com essa classe RouteWebSocket e passada na lista de rotas como todas as outras, ela recebe um socket onde você pode ouvir e lidar com todos dados enviados e recebidos no socket.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+ final  websocket  =  RouteWebSocket(
+  '/test',
+  middlewareWebSocket: (WebSocket  socket) async {
+   socket.add('Hello World');
+   socket.listen(
+    (event) {
+     print(event);
+    },
+    onDone: () {
+     socket.close();
+    },
+   );
+  },
+ );
+ Sparky.server(
+  routes: [websocket],
+ );
+}
+```
+
+## Como fazer um login simples com JWT
+
+Aqui é gerado um token e antes de cada request ele verifica se a requisição é para rota de login e ignora caso seja true, caso contrario ele verifica o token de login e retorna null, isso deixa ele ir para a rota principal, caso contrario ele retorna a uma resposta de não autorizado.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+ final  authJwt  =  AuthJwt(secretKey:  'secretKey');
+ late  final  String  token;
+ 
+ final  login  = RouteHttp.get('/login', middleware: (HttpRequest  request) async {
+  token  =  authJwt.generateToken({'username':  'username'});
+  return  Response.ok(body:  '{"token":"$token"}');
+ });
+ 
+ Sparky.server(
+  routes: [login],
+  pipelineBefore:  Pipeline()..add((request) async {
+   if (request.requestedUri.path  ==  '/login') {
+    return  null;
+   } else {
+   if (authJwt.verifyToken(token)) {
+    return  null;
+   } else {
+    return  Response.unauthorized(body:  'Não autorizado');
+   }
+  }
+ }),
+ );
+}
+```
+
+# Como buildar para usar da maneira mais performática
+
+O dart é uma linguagem compilada que compila para qualquer plataforma,  com o comando abaixo passando o arquivo do seu projeto você vai conseguir um executável muito mais performático.
+
+```bash
+dart compile exe main.dart
+```
+
+# Visão para o futuro
+
+A ideia é sempre mante-lo simples, não adicionar complexidade a ideia é nas próximas atualizações deixar maneiras simples de fazer determinadas rotas rodar em uma isolates separada a partir de uma flag, para conseguir uma performance maior e adicionar testes, o projeto é totalmente código aberto e contribuições são muito bem vindas.

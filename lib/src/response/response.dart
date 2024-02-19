@@ -24,6 +24,10 @@ final class Response {
   const Response.accepted({required this.body, this.contentType})
       : status = HttpStatus.accepted;
 
+  /// Request Unauthorized
+  const Response.unauthorized({required this.body, this.contentType})
+      : status = HttpStatus.unauthorized;
+
   final int status;
   final String body;
   final ContentType? contentType;
