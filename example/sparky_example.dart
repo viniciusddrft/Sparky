@@ -12,7 +12,10 @@ void main() {
 
     return Response.ok(body: '{"token":"$token"}');
   });
-
+  final flutterando =
+      RouteHttp.get('/flutterando', middleware: (HttpRequest request) async {
+    return Response.ok(body: 'receba');
+  });
   final todo =
       RouteHttp.get('/todo/list', middleware: (HttpRequest request) async {
     return Response.ok(body: '[]');
@@ -34,7 +37,7 @@ void main() {
   );
 
   Sparky.server(
-    routes: [login, todo, web],
+    routes: [login, todo, web, flutterando],
     pipelineBefore: Pipeline()
       ..add((request) async {
         if (request.requestedUri.path == '/login') {

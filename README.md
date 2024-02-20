@@ -1,5 +1,7 @@
 # Welcome to Sparky
 
+[Switch to English](README_EN.md)
+
 Sparky é pacote que ajuda na construção de apis rest de forma simples com suporte a websocket a autenticação jwt.
 
 # Features
@@ -16,13 +18,16 @@ Sparky é pacote que ajuda na construção de apis rest de forma simples com sup
 ```dart
 import  'dart:io';
 import  'package:sparky/sparky.dart';
+
 void  main(){
-// Criação da rota passando um middleware que recebe todos os dados da request, e precisa retornar uma response.
-final  route1  =  RouteHttp.get('teste', middleware: (request) async {
-  return  Response.ok(body:  'Olá mundo');
- });
-// inicialização do Sparky passando uma lista de rotas.
-Sparky.server(routes: [route1]);
+  // Criação da rota passando um middleware que recebe todos os dados da request, e precisa retornar uma response.
+
+  final  route1  =  RouteHttp.get('teste', middleware: (request) async {
+    return  Response.ok(body:  'Olá mundo');
+  });
+  
+  // inicialização do Sparky passando uma lista de rotas.
+  Sparky.server(routes: [route1]);
 }
 ```
 
