@@ -15,7 +15,7 @@ Sparky is a package that helps in building rest apis in a simple way with websoc
 
 ## Creating a simple route
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 
@@ -33,7 +33,7 @@ void main(){
 
 ## How to customize the ip and port
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
@@ -49,7 +49,7 @@ void main(){
 
 You can create Add N middlewares in pipilenes.
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
@@ -69,7 +69,7 @@ Sparky.server(
 
 By default it implicitly has this configuration, but you can change this enum to only show error logs, you can choose between just showing or saving in a 'logs.txt' file
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
@@ -85,7 +85,7 @@ void main(){
 
 A webSocket route is one created with this RouteWebSocket class and passed in the route list like all others, it is assigned a socket where you can listen and handle all data sent and received on the socket.
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
@@ -113,7 +113,7 @@ void main(){
 
 Here a token is generated and before each request it checks if the request is for login rotation and ignores it if it is true, otherwise it checks the login token and returns null, this lets it go to the main route, otherwise it returns an unauthorized response.
 
-```javelin
+```dart
 import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
