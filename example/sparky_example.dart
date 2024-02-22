@@ -5,17 +5,14 @@ import 'package:sparky/sparky.dart';
 
 void main() {
   final authJwt = AuthJwt(secretKey: 'senha');
-  late final String token;
+  String? token;
   final login =
       RouteHttp.get('/login', middleware: (HttpRequest request) async {
     token = authJwt.generateToken({'username': 'username'});
 
     return Response.ok(body: '{"token":"$token"}');
   });
-  final flutterando =
-      RouteHttp.get('/flutterando', middleware: (HttpRequest request) async {
-    return Response.ok(body: 'receba');
-  });
+
   final todo =
       RouteHttp.get('/todo/list', middleware: (HttpRequest request) async {
     return Response.ok(body: '[]');
@@ -37,13 +34,13 @@ void main() {
   );
 
   Sparky.server(
-    routes: [login, todo, web, flutterando],
+    routes: [login, todo, web],
     pipelineBefore: Pipeline()
       ..add((request) async {
         if (request.requestedUri.path == '/login') {
           return null;
         } else {
-          if (authJwt.verifyToken(token)) {
+          if (token != null && authJwt.verifyToken(token!)) {
             return null;
           } else {
             return Response.unauthorized(body: 'Não autorizado');
