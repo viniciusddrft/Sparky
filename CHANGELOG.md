@@ -1,3 +1,7 @@
+## 1.0.3
+
+- Correção de exemplo.
+
 ## 1.0.2
 
 - Add doc english.
