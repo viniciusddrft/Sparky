@@ -33,6 +33,7 @@ base class Sparky {
   final LogConfig logConfig;
   final LogType logType;
   final Pipeline? pipelineBefore, pipelineAfter;
+  IOSink? file;
 
   ///Private function checks for routes with duplicate names.
   bool _checkRepeatedRoutes(Iterable<String> routes) {
@@ -64,85 +65,96 @@ base class Sparky {
         print('-- info --> Listen on $ip:$port');
         if (logConfig == LogConfig.writeLogs ||
             logConfig == LogConfig.showAndWriteLogs) {
+          file = File('logs.txt').openWrite(mode: FileMode.append);
           _saveLogs('-- info --> Listen on $ip:$port');
         }
       }
     }
 
-    _listenHttp((HttpRequest request) async {
-      final response = request.response;
+    _listenHttp(
+      (HttpRequest request) async {
+        final response = request.response;
 
-      Response? pipelineBeforeResponse;
+        Response? pipelineBeforeResponse;
 
-      ///Logic to run (N) middlewares before the main route.
-      if (pipelineBefore?._mids.isNotEmpty != null) {
-        for (final mid in pipelineBefore!._mids) {
-          final response = await mid(request);
-          if (response != null) {
-            pipelineBeforeResponse = response;
+        ///Logic to run (N) middlewares before the main route.
+        if (pipelineBefore?._mids.isNotEmpty != null) {
+          for (final mid in pipelineBefore!._mids) {
+            final response = await mid(request);
+            if (response != null) {
+              pipelineBeforeResponse = response;
+            }
           }
         }
-      }
-      if (WebSocketTransformer.isUpgradeRequest(request)) {
-        final websocket = await WebSocketTransformer.upgrade(request);
+        if (WebSocketTransformer.isUpgradeRequest(request)) {
+          final websocket = await WebSocketTransformer.upgrade(request);
 
-        routes
-            .firstWhere(
-              (element) => element.name == request.uri.path,
-              orElse: () => Route('/404', middleware: (request) async {
-                return await routeNotFound?.middleware!(request) ??
-                    Response.notFound(
-                        body: "{'errorCode':'404','message':'Not Found'}");
-              }),
-            )
-            .middlewareWebSocket!(websocket);
-      } else {
-        final Response routeResponse;
-
-        if (pipelineBeforeResponse == null) {
-          routeResponse = await _internalHandler(request);
+          routes
+              .firstWhere(
+                (element) => element.name == request.uri.path,
+                orElse: () => Route('/404', middleware: (request) async {
+                  return await routeNotFound?.middleware!(request) ??
+                      Response.notFound(
+                          body: "{'errorCode':'404','message':'Not Found'}");
+                }),
+              )
+              .middlewareWebSocket!(websocket);
         } else {
-          routeResponse = pipelineBeforeResponse;
-        }
+          final Response routeResponse;
 
-        response
-          ..headers.contentType = routeResponse.contentType ?? ContentType.json
-          ..statusCode = routeResponse.status
-          ..write(routeResponse.body);
-        response.close();
+          if (pipelineBeforeResponse == null) {
+            routeResponse = await _internalHandler(request);
+          } else {
+            routeResponse = pipelineBeforeResponse;
+          }
 
-        ///Logic to run (N) middlewares after the main route.
-        if (pipelineAfter?._mids.isNotEmpty != null) {
-          for (final mid in pipelineAfter!._mids) {
-            await mid(request);
+          response
+            ..headers.contentType =
+                routeResponse.contentType ?? ContentType.json
+            ..statusCode = routeResponse.status
+            ..write(routeResponse.body);
+          response.close();
+
+          ///Logic to run (N) middlewares after the main route.
+          if (pipelineAfter?._mids.isNotEmpty != null) {
+            for (final mid in pipelineAfter!._mids) {
+              await mid(request);
+            }
+          }
+
+          if (logType == LogType.all || logType == LogType.info) {
+            if (logConfig == LogConfig.showLogs ||
+                logConfig == LogConfig.showAndWriteLogs) {
+              print(
+                  '-- info --> Method ${request.method} ${routeResponse.status} ${request.uri.path} from -> ${request.connectionInfo?.remoteAddress.host}');
+            }
+            if (logConfig == LogConfig.writeLogs ||
+                logConfig == LogConfig.showAndWriteLogs) {
+              _saveLogs(
+                  '-- info --> Method ${request.method} ${routeResponse.status} ${request.uri.path} from -> ${request.connectionInfo?.remoteAddress.host}:');
+            }
           }
         }
-
-        if (logType == LogType.all || logType == LogType.info) {
+      },
+      onError: (e) {
+        if (logType == LogType.all || logType == LogType.errors) {
           if (logConfig == LogConfig.showLogs ||
               logConfig == LogConfig.showAndWriteLogs) {
-            print(
-                '-- info --> Method ${request.method} ${routeResponse.status} ${request.uri.path} from -> ${request.connectionInfo?.remoteAddress.host}');
+            print('-- error --> Message $e');
           }
           if (logConfig == LogConfig.writeLogs ||
               logConfig == LogConfig.showAndWriteLogs) {
-            _saveLogs(
-                '-- info --> Method ${request.method} ${routeResponse.status} ${request.uri.path} from -> ${request.connectionInfo?.remoteAddress.host}:');
+            _saveLogs('-- error --> Message $e');
           }
         }
-      }
-    }, onError: (e) {
-      if (logType == LogType.all || logType == LogType.errors) {
-        if (logConfig == LogConfig.showLogs ||
-            logConfig == LogConfig.showAndWriteLogs) {
-          print('-- error --> Message $e');
-        }
-        if (logConfig == LogConfig.writeLogs ||
-            logConfig == LogConfig.showAndWriteLogs) {
-          _saveLogs('-- error --> Message $e');
-        }
-      }
-    });
+        file?.flush();
+        file?.close();
+      },
+      onDone: () {
+        file?.flush();
+        file?.close();
+      },
+    );
   }
 
   /// Private function that handles executing the code for each route.
@@ -190,10 +202,6 @@ base class Sparky {
   }
 
   /// Private function that saves logs.
-  void _saveLogs(String message) async {
-    final file = File('logs.txt').openWrite(mode: FileMode.append);
-
-    file.write('${DateTime.now()}: $message\n');
-    file.close();
-  }
+  void _saveLogs(String message) =>
+      file?.write('${DateTime.now()}: $message\n');
 }
