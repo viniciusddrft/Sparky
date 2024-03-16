@@ -1,3 +1,7 @@
+## 1.0.7
+
+- Melhoria na função de validação de rotas repetidas.
+
 ## 1.0.6
 
 - A vesão anterior foi com um commit a menos 😅
