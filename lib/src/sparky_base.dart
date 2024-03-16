@@ -91,16 +91,17 @@ base class Sparky {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final websocket = await WebSocketTransformer.upgrade(request);
 
-          routes
-              .firstWhere(
-                (element) => element.name == request.uri.path,
-                orElse: () => Route('/404', middleware: (request) async {
-                  return await routeNotFound?.middleware!(request) ??
-                      Response.notFound(
-                          body: "{'errorCode':'404','message':'Not Found'}");
-                }),
-              )
-              .middlewareWebSocket!(websocket);
+          final Route? route = _routeMap[request.uri.path];
+
+          if (route != null) {
+            route.middlewareWebSocket!(websocket);
+          } else {
+            Route('/404', middleware: (request) async {
+              return await routeNotFound?.middleware!(request) ??
+                  Response.notFound(
+                      body: "{'errorCode':'404','message':'Not Found'}");
+            }).middlewareWebSocket!(websocket);
+          }
         } else {
           final Response routeResponse;
 
@@ -176,19 +177,13 @@ base class Sparky {
           },
         ).middleware!(request);
       }
-    }
-
-    final allRoutes = routes.map((e) => e.name).toSet();
-
-    if (!allRoutes.contains(request.uri.path)) {
+    } else {
       return Route('/404', middleware: (request) async {
         return await routeNotFound?.middleware!(request) ??
             Response.notFound(
                 body: "{'errorCode':'404','message':'Not Found'}");
       }).middleware!(request);
     }
-
-    throw SparkyUnexpectedError();
   }
 
   /// Private function that listens for HTTP requests.
