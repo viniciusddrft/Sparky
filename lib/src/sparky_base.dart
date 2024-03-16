@@ -88,20 +88,11 @@ base class Sparky {
             }
           }
         }
-        if (WebSocketTransformer.isUpgradeRequest(request)) {
+        if (WebSocketTransformer.isUpgradeRequest(request) &&
+            _routeMap[request.uri.path] != null) {
           final websocket = await WebSocketTransformer.upgrade(request);
 
-          final Route? route = _routeMap[request.uri.path];
-
-          if (route != null) {
-            route.middlewareWebSocket!(websocket);
-          } else {
-            Route('/404', middleware: (request) async {
-              return await routeNotFound?.middleware!(request) ??
-                  Response.notFound(
-                      body: "{'errorCode':'404','message':'Not Found'}");
-            }).middlewareWebSocket!(websocket);
-          }
+          _routeMap[request.uri.path]!.middlewareWebSocket!(websocket);
         } else {
           final Response routeResponse;
 

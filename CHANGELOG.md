@@ -1,6 +1,10 @@
+## 1.0.6
+
+- A vesão anterior foi com um commit a menos 😅
+
 ## 1.0.5
 
-- Melhoria no sistema de busca de rotas antes a cada request ele fazia um lop de complexidade O(N) para achar a rota correta e executala, agora todas rotas são precarregadas no inicio da função em um map e acessadas diretamente com a complecidade O(1) o que entrega mais performace é mais perceptivel em casos de grandes números de rotas.
+- Melhoria no sistema de busca de rotas antes a cada request ele fazia um lop de complexidade O(N) para achar a rota correta e executada, agora todas rotas são pré-carregadas no início da função em um map e acessadas diretamente com a complexidade O(1) o que entrega mais performance é mais perceptível em casos de grandes números de rotas.
 
 ## 1.0.4
 
