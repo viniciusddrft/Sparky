@@ -23,10 +23,12 @@ base class Sparky {
     this.pipelineAfter,
   }) {
     _start();
+    _routeMap = {for (var route in routes) route.name: route};
   }
 
-  final List<Route> routes;
   late final HttpServer _server;
+  late final Map<String, Route> _routeMap;
+  final List<Route> routes;
   final int port;
   final String ip;
   final Route? routeNotFound;
@@ -159,22 +161,20 @@ base class Sparky {
 
   /// Private function that handles executing the code for each route.
   Future<Response> _internalHandler(HttpRequest request) async {
-    for (final route in routes) {
-      if (route.name == request.uri.path) {
-        final acceptedMethods =
-            route.acceptedMethods?.map((e) => e.text).toSet();
-        if (acceptedMethods != null &&
-            acceptedMethods.contains(request.method)) {
-          return route.middleware!(request);
-        } else {
-          return Route(
-            '/405',
-            middleware: (request) async {
-              return Response.notFound(
-                  body: "{'errorCode':'405','message':'Method Not Allowed'}");
-            },
-          ).middleware!(request);
-        }
+    final Route? route = _routeMap[request.uri.path];
+
+    if (route != null) {
+      final acceptedMethods = route.acceptedMethods?.map((e) => e.text).toSet();
+      if (acceptedMethods != null && acceptedMethods.contains(request.method)) {
+        return route.middleware!(request);
+      } else {
+        return Route(
+          '/405',
+          middleware: (request) async {
+            return Response.notFound(
+                body: "{'errorCode':'405','message':'Method Not Allowed'}");
+          },
+        ).middleware!(request);
       }
     }
 
