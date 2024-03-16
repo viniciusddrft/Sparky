@@ -41,13 +41,7 @@ base class Sparky {
   bool _checkRepeatedRoutes(Iterable<String> routes) {
     final checkedElements = <String>{};
 
-    for (final name in routes) {
-      if (checkedElements.contains(name)) {
-        return true;
-      }
-      checkedElements.add(name);
-    }
-    return false;
+    return routes.any((name) => !checkedElements.add(name));
   }
 
   ///Private function that initializes Sparky.
