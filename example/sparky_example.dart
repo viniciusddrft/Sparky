@@ -15,7 +15,7 @@ void main() {
 
   final todo =
       RouteHttp.get('/todo/list', middleware: (HttpRequest request) async {
-    return Response.ok(body: '[]');
+    return Response.ok(body: '[0,1,2,3,4,5,6,7,8,9]');
   });
 
   final web = RouteWebSocket(
@@ -40,11 +40,15 @@ void main() {
         if (request.requestedUri.path == '/login') {
           return null;
         } else {
-          if (request.headers['token'] != null &&
-              authJwt.verifyToken(request.headers['token']!.first)) {
-            return null;
+          if (request.headers['token'] != null) {
+            if (request.headers['token'] != null &&
+                authJwt.verifyToken(request.headers['token']!.first)) {
+              return null;
+            } else {
+              return Response.unauthorized(body: 'Não autorizado');
+            }
           } else {
-            return Response.unauthorized(body: 'Não autorizado');
+            return Response.unauthorized(body: 'Envie o token no header');
           }
         }
       }),

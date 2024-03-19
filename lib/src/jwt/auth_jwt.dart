@@ -10,9 +10,9 @@ final class AuthJwt {
 
   const AuthJwt({required this.secretKey});
 
-  /// This function takes a payload, which is a [Map<String, dynamic>] payload
+  /// This function takes a payload, which is a [Map<String, Object>] payload
   /// where login data will be sent and a token will be returned.
-  String generateToken(Map<String, dynamic> payload) {
+  String generateToken(Map<String, Object> payload) {
     final header = json.encode({'alg': 'HS256', 'typ': 'JWT'});
     final encodedHeader = base64Url.encode(utf8.encode(header));
     final encodedPayload = base64Url.encode(utf8.encode(json.encode(payload)));

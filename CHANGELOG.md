@@ -1,3 +1,7 @@
+## 1.0.8
+
+- Mais opções de responses com contrutores com status prontos, melhoria no código de exemplo a parte do login jwt não estava de maneira adequada antes.
+
 ## 1.0.7
 
 - Melhoria na função de validação de rotas repetidas.
