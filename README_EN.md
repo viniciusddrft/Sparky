@@ -118,27 +118,32 @@ import 'dart:io';
 import 'package:sparky/sparky.dart';
 void main(){
    final authJwt = AuthJwt(secretKey: 'secretKey');
-   token String late end;
  
    final login = RouteHttp.get('/login', middleware: (HttpRequest request) async {
-    token = authJwt.generateToken({'username': 'username'});
+    final token = authJwt.generateToken({'username': 'username'});
     return Response.ok(body: '{"token":"$token"}');
    });
  
-   Sparky.server(
-    routes: [login],
-    pipelineBefore: Pipeline()..add((request) async {
-     if (request.requestedUri.path == '/login') {
-      return null;
-     } other {
-     if (authJwt.verifyToken(token)) {
-      return null;
-     } other {
-      return Response.unauthorized(body: 'Unauthorized');
-     }
-    }
-   }),
-   );
+ Sparky.server(
+  routes: [login],
+    pipelineBefore: Pipeline()
+      ..add((HttpRequest request) async {
+        if (request.requestedUri.path == '/login') {
+          return null;
+        } else {
+          if (request.headers['token'] != null) {
+            if (request.headers['token'] != null &&
+                authJwt.verifyToken(request.headers['token']!.first)) {
+              return null;
+            } else {
+              return Response.unauthorized(body: 'Não autorizado');
+            }
+          } else {
+            return Response.unauthorized(body: 'Envie o token no header');
+          }
+        }
+      }),
+ );
 }
 ```
 
