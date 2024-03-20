@@ -22,7 +22,7 @@ import 'package:sparky/sparky.dart';
 void main(){
     // Creation of the route passing through a middleware that receives all the data from the request, and needs to return a response.
 
-    final route1 = RouteHttp.get('teste', middleware: (request) async {
+    final route1 = RouteHttp.get('/teste', middleware: (request) async {
       return Response.ok(body: 'Hello world');
     });
   

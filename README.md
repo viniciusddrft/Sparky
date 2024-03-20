@@ -22,7 +22,7 @@ import  'package:sparky/sparky.dart';
 void  main(){
   // Criação da rota passando um middleware que recebe todos os dados da request, e precisa retornar uma response.
 
-  final  route1  =  RouteHttp.get('teste', middleware: (request) async {
+  final  route1  =  RouteHttp.get('/teste', middleware: (request) async {
     return  Response.ok(body:  'Olá mundo');
   });
   

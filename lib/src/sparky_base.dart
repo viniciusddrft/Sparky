@@ -48,8 +48,7 @@ base class Sparky {
   void _start() async {
     if (_checkRepeatedRoutes(routes.map((e) => e.name))) {
       throw RoutesRepeated();
-    }
-    if (routes.isEmpty) {
+    } else if (routes.isEmpty) {
       throw ErrorRouteEmpty();
     }
 

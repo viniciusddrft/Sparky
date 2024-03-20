@@ -36,7 +36,7 @@ void main() {
   Sparky.server(
     routes: [login, todo, web],
     pipelineBefore: Pipeline()
-      ..add((request) async {
+      ..add((HttpRequest request) async {
         if (request.requestedUri.path == '/login') {
           return null;
         } else {
