@@ -147,7 +147,7 @@ void  main(){
 }
 ```
 
-# Como buildar para usar da maneira mais performática
+# Como compilar para usar da maneira mais performática
 
 O dart é uma linguagem compilada que compila para qualquer plataforma,  com o comando abaixo passando o arquivo do seu projeto você vai conseguir um executável muito mais performático.
 

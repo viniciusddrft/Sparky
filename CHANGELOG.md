@@ -1,3 +1,7 @@
+## 1.0.9
+
+- Melhoria na doc da Pagina inicial.
+
 ## 1.0.8
 
 - Mais opções de responses com contrutores com status prontos, melhoria no código de exemplo a parte do login jwt não estava de maneira adequada antes.

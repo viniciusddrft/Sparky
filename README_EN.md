@@ -147,7 +147,7 @@ void main(){
 }
 ```
 
-# How to build to use in the most performant way
+# How to compile to use in the most performant way
 
 Dart is a language compiled for any platform, like the command below, passing through your project file, you will get one that is possibly much more performant.
 
