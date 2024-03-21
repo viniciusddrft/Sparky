@@ -1,3 +1,7 @@
+## 1.0.10
+
+- Adicionar topicos.
+
 ## 1.0.9
 
 - Melhoria na doc da Pagina inicial.

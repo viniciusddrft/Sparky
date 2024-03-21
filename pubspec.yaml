@@ -1,8 +1,13 @@
 name: sparky
 description: Sparky é pacote que ajuda na construção de apis rest de forma simples com suporte a websocket a autenticação jwt.
-version: 1.0.9
+version: 1.0.10
 repository: https://github.com/viniciusddrft/Sparky
 homepage: https://github.com/viniciusddrft/Sparky
+
+topics:
+  - server
+  - api
+  - backend
 
 environment:
   sdk: ^3.3.0
