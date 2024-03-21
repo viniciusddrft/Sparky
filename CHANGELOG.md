@@ -1,6 +1,6 @@
 ## 1.0.10
 
-- Adicionar topicos.
+- Topicos adicionados no pubspec.
 
 ## 1.0.9
 
