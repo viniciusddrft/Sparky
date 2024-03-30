@@ -13,26 +13,21 @@ final class RouteHttp extends Route {
         AcceptedMethods.post,
         AcceptedMethods.put,
         AcceptedMethods.delete,
-      ]})
-      : super(middlewareWebSocket: null);
+      ]});
 
   const RouteHttp.get(super.name,
       {required super.middleware,
-      super.acceptedMethods = const [AcceptedMethods.get]})
-      : super(middlewareWebSocket: null);
+      super.acceptedMethods = const [AcceptedMethods.get]});
 
   const RouteHttp.put(super.name,
       {required super.middleware,
-      super.acceptedMethods = const [AcceptedMethods.put]})
-      : super(middlewareWebSocket: null);
+      super.acceptedMethods = const [AcceptedMethods.put]});
 
   const RouteHttp.delete(super.name,
       {required super.middleware,
-      super.acceptedMethods = const [AcceptedMethods.delete]})
-      : super(middlewareWebSocket: null);
+      super.acceptedMethods = const [AcceptedMethods.delete]});
 
   const RouteHttp.post(super.name,
       {required super.middleware,
-      super.acceptedMethods = const [AcceptedMethods.post]})
-      : super(middlewareWebSocket: null);
+      super.acceptedMethods = const [AcceptedMethods.post]});
 }

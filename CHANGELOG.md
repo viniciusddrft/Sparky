@@ -1,4 +1,8 @@
-# 1.0.11
+# 1.0.12
+
+- Melhoria nos construtores de rotas.
+
+## 1.0.11
 
 - Topico novo adicionado no pubspec, e pequenas correções em construtores e nomes.
 
