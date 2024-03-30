@@ -7,5 +7,5 @@ final class Pipeline {
   final List<MiddlewareNulable> _mids = [];
 
   /// This function adds middleware.
-  void add(MiddlewareNulable middlewareBefore) => _mids.add(middlewareBefore);
+  void add(MiddlewareNulable middleware) => _mids.add(middleware);
 }

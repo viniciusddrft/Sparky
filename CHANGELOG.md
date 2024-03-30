@@ -1,3 +1,7 @@
+# 1.0.11
+
+- Topico novo adicionado no pubspec, e pequenas correções em construtores e nomes.
+
 ## 1.0.10
 
 - Topicos adicionados no pubspec.

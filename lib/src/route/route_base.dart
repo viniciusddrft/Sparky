@@ -10,7 +10,7 @@ base class Route {
   final List<AcceptedMethods>? acceptedMethods;
 
   const Route(this.name,
-      {required this.middleware,
+      {this.middleware,
       this.middlewareWebSocket,
       this.acceptedMethods = const [
         AcceptedMethods.get,
