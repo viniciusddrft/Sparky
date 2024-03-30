@@ -150,7 +150,9 @@ base class Sparky {
 
     if (route != null) {
       final acceptedMethods = route.acceptedMethods?.map((e) => e.text);
-      if (acceptedMethods != null && acceptedMethods.contains(request.method)) {
+      if (acceptedMethods != null &&
+          acceptedMethods.contains(request.method) &&
+          route.middleware != null) {
         return route.middleware!(request);
       } else {
         return Route(
