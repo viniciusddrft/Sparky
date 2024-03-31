@@ -1,4 +1,8 @@
-# 1.0.12
+# 1.0.13
+
+- Correção de bug em websocket quando ela recebe uma request get,post,put ou delete.
+
+## 1.0.12
 
 - Melhoria nos construtores de rotas.
 

@@ -15,19 +15,56 @@ Sparky is a package that helps in building rest apis in a simple way with websoc
 
 ## Creating a simple route
 
+You can use this custom constructor to accept only the GET method, or you can use the normal constructor and customize it.
+
 ```dart
-import 'dart:io';
-import 'package:sparky/sparky.dart';
+import  'dart:io';
+import  'package:sparky/sparky.dart';
 
-void main(){
-    // Creation of the route passing through a middleware that receives all the data from the request, and needs to return a response.
+void  main(){
+  // Creation of the route passing a middleware that receives all the request data and needs to return a response.
 
-    final route1 = RouteHttp.get('/teste', middleware: (request) async {
-      return Response.ok(body: 'Hello world');
-    });
+  final  route1  =  RouteHttp.get('/teste', middleware: (request) async {
+    return  Response.ok(body:  'Olá mundo');
+  });
   
-    // initialization of Sparky passing through a list of routes.
-    Sparky.server(routes: [route1]);
+  // Initialization of Sparky by passing a list of routes.
+  Sparky.server(routes: [route1]);
+}
+```
+
+## Creating a route from a class
+
+When creating a route from a class, you can define whether it will be a WebSocket route or not, and you can specify if it will accept only the GET method or others.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+
+final class RouteTest extends Route {
+  RouteTest()
+      : super('/test', middleware: (request) async {
+          return Response.ok(body: 'test');
+        }, acceptedMethods: [
+          AcceptedMethods.get,
+          AcceptedMethods.post,
+        ]);
+}
+
+final class RouteSocket extends Route {
+  RouteSocket()
+      : super('/socket', middlewareWebSocket: (WebSocket webSocket) async {
+          webSocket.listen((event) {
+            print(event);
+          }, onDone: () {
+            webSocket.close();
+          });
+        });
+}
+
+void  main(){
+  // Initialization of Sparky by passing a list of routes.
+  Sparky.server(routes: [RouteTest(),RouteSocket()]);
 }
 ```
 

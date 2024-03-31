@@ -15,6 +15,9 @@ Sparky é pacote que ajuda na construção de apis rest de forma simples com sup
 
 ## Criando uma rota simples
 
+você pode usar esse construtor personalizado para aceitar apenas metodo get ou pode
+usar o construtor normal e personalizar.
+
 ```dart
 import  'dart:io';
 import  'package:sparky/sparky.dart';
@@ -28,6 +31,42 @@ void  main(){
   
   // inicialização do Sparky passando uma lista de rotas.
   Sparky.server(routes: [route1]);
+}
+```
+
+## Criando uma rota apartir de uma classe
+
+ao criar uma rota apartir de uma classe você pode definir se será uma rota de websocket ou não
+pode definir se ela vai aceitar somente um metodo get ou outros.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+
+final class RouteTest extends Route {
+  RouteTest()
+      : super('/test', middleware: (request) async {
+          return Response.ok(body: 'test');
+        }, acceptedMethods: [
+          AcceptedMethods.get,
+          AcceptedMethods.post,
+        ]);
+}
+
+final class RouteSocket extends Route {
+  RouteSocket()
+      : super('/socket', middlewareWebSocket: (WebSocket webSocket) async {
+          webSocket.listen((event) {
+            print(event);
+          }, onDone: () {
+            webSocket.close();
+          });
+        });
+}
+
+void  main(){
+  // inicialização do Sparky passando uma lista de rotas.
+  Sparky.server(routes: [RouteTest(),RouteSocket()]);
 }
 ```
 
