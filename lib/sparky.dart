@@ -6,5 +6,7 @@ library sparky;
 export 'src/sparky_base.dart';
 export 'src/response/response.dart';
 export 'src/route/route_http.dart';
+export 'src/route/route_base.dart';
 export 'src/route/route_web_socket.dart';
 export 'src/jwt/auth_jwt.dart';
+export 'src/types/sparky_types.dart';

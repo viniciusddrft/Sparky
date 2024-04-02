@@ -1,4 +1,8 @@
-# 1.0.13
+# 1.0.14
+
+- export necessario para usar criar rotas com herança de route.
+
+## 1.0.13
 
 - Correção de bug em websocket quando ela recebe uma request get,post,put ou delete.
 

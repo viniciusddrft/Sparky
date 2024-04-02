@@ -2,8 +2,6 @@
 
 import 'dart:io';
 import 'package:sparky/sparky.dart';
-import 'package:sparky/src/route/route_base.dart';
-import 'package:sparky/src/types/sparky_types.dart';
 
 void main() {
   /// In this sample code, I will demonstrate the ways to create routes using custom classes
