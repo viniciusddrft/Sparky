@@ -1,4 +1,8 @@
-# 1.0.14
+# 1.0.15
+
+- Foram adicionados os metodos de requisição web que faltavam.
+
+## 1.0.14
 
 - export necessario para usar criar rotas com herança de route.
 
