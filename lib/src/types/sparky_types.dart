@@ -25,7 +25,11 @@ enum AcceptedMethods {
   get('GET'),
   post('POST'),
   delete('DELETE'),
-  put('PUT');
+  put('PUT'),
+  patch('PATCH'),
+  head('HEAD'),
+  options('OPTIONS'),
+  trace('TRACE');
 
   const AcceptedMethods(this.text);
   final String text;

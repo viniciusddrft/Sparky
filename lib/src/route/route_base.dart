@@ -16,6 +16,10 @@ base class Route {
         AcceptedMethods.get,
         AcceptedMethods.post,
         AcceptedMethods.put,
-        AcceptedMethods.delete
+        AcceptedMethods.delete,
+        AcceptedMethods.patch,
+        AcceptedMethods.head,
+        AcceptedMethods.options,
+        AcceptedMethods.trace
       ]});
 }
