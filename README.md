@@ -4,14 +4,14 @@
 
 Sparky é pacote que ajuda na construção de apis rest de forma simples com suporte a websocket a autenticação jwt.
 
-# Features
+## Features
 
 - Sistema de logs.
 - Suporte a webSocket.
 - Autenticação JWT.
 - Pipeline antes e depois do middleware principal.
 
-# Como Usar
+## Como Usar
 
 ## Criando uma rota simples
 
@@ -186,7 +186,7 @@ void  main(){
 }
 ```
 
-# Como compilar para usar da maneira mais performática
+## Como compilar para usar da maneira mais performática
 
 O dart é uma linguagem compilada que compila para qualquer plataforma,  com o comando abaixo passando o arquivo do seu projeto você vai conseguir um executável muito mais performático.
 
@@ -194,6 +194,36 @@ O dart é uma linguagem compilada que compila para qualquer plataforma,  com o c
 dart compile exe main.dart
 ```
 
-# Visão para o futuro
+## Como funciona o cache
+
+por padrão depois que uma rota rodar ela já vai ter cache e sempre retornara a mesma resonse,
+para que o código dessa rota volte a funcionar e ele entregue um valor diferente é preciso chamar a função
+'onUpdate' isso diz de forma explicita que não é para usar o cache e ele vai rodar o código da rota normalmente,
+assim fica mais fácil de trabalhar com cache você pode adicionar no sistema de pipeline uma lógica para controlar se
+o chace deve ser usado ou não.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+
+
+  final random =
+    RouteHttp.get('/random', middleware: (HttpRequest request) async {
+    final value = Random().nextInt(100);
+    return Response.ok(body: '{value:$value}');
+  });
+
+ Sparky.server(
+  routes: [login],
+    pipelineBefore: Pipeline()
+      ..add((HttpRequest request) async {
+       random.onUpdate();
+      }),
+ );
+}
+```
+
+## Visão para o futuro
 
 A ideia é sempre mante-lo simples, não adicionar complexidade a ideia é nas próximas atualizações deixar maneiras simples de fazer determinadas rotas rodar em uma isolates separada a partir de uma flag, para conseguir uma performance maior e adicionar testes, o projeto é totalmente código aberto e contribuições são muito bem vindas.

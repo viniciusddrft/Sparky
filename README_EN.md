@@ -4,14 +4,14 @@
 
 Sparky is a package that helps in building rest apis in a simple way with websocket support with jwt authentication.
 
-# Characteristics
+## Characteristics
 
 - Records system.
 - WebSocket support.
 - JWT authentication.
 - Pipeline before and after the main middleware.
 
-# How to use
+## How to use
 
 ## Creating a simple route
 
@@ -184,7 +184,7 @@ void main(){
 }
 ```
 
-# How to compile to use in the most performant way
+## How to compile to use in the most performant way
 
 Dart is a language compiled for any platform, like the command below, passing through your project file, you will get one that is possibly much more performant.
 
@@ -192,6 +192,32 @@ Dart is a language compiled for any platform, like the command below, passing th
 dart compile exe main.dart
 ```
 
-# Vision for the future
+## How does cache work
+
+By default, after a route runs, it will be cached and will always return the same response. For the code of this route to work again and deliver a different value, you need to call the 'onUpdate' function. This explicitly indicates not to use the cache, and it will run the route's code normally. This makes it easier to work with cache as you can add logic to the pipeline system to control whether the cache should be used or not.
+
+```dart
+import  'dart:io';
+import  'package:sparky/sparky.dart';
+void  main(){
+
+
+  final random =
+    RouteHttp.get('/random', middleware: (HttpRequest request) async {
+    final value = Random().nextInt(100);
+    return Response.ok(body: '{value:$value}');
+  });
+
+ Sparky.server(
+  routes: [login],
+    pipelineBefore: Pipeline()
+      ..add((HttpRequest request) async {
+       random.onUpdate();
+      }),
+ );
+}
+```
+
+## Vision for the future
 
 The idea is to always keep it simple, not add complexity, the idea is in the next updates to leave simple ways to make certain routes run in a separate isolate using a flag, to achieve greater performance and add tests, the project is completely code open and contributions are very welcome.
