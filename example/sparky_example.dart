@@ -1,6 +1,7 @@
 // @author viniciusddrft
 
 import 'dart:io';
+import 'dart:math';
 import 'package:sparky/sparky.dart';
 
 void main() {
@@ -23,6 +24,12 @@ void main() {
     return Response.ok(body: '[0,1,2,3,4,5,6,7,8,9]');
   });
 
+  final random =
+      RouteHttp.get('/random', middleware: (HttpRequest request) async {
+    final value = Random().nextInt(100);
+    return Response.ok(body: '{value:$value}');
+  });
+
   final web = RouteWebSocket(
     '/websocket',
     middlewareWebSocket: (WebSocket socket) async {
@@ -43,25 +50,13 @@ void main() {
         login,
         todo,
         web,
+        random,
         RouteTest(),
         RouteSocket(),
       ],
       pipelineBefore: Pipeline()
         ..add((HttpRequest request) async {
-          if (request.requestedUri.path == '/login') {
-            return null;
-          } else {
-            if (request.headers['token'] != null) {
-              if (request.headers['token'] != null &&
-                  authJwt.verifyToken(request.headers['token']!.first)) {
-                return null;
-              } else {
-                return Response.unauthorized(body: 'Não autorizado');
-              }
-            } else {
-              return Response.unauthorized(body: 'Envie o token no header');
-            }
-          }
+          return null;
         }),
       pipelineAfter: Pipeline()
         ..add((request) async {

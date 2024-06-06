@@ -1,7 +1,8 @@
 // @author viniciusddrft
 
-import 'package:sparky/src/types/sparky_types.dart';
-import 'route/route_base.dart';
+import 'dart:io';
+import 'package:sparky/sparky.dart';
+import 'cache/cache_manager.dart';
 
 /// Main logic file of Sparky's operation.
 
@@ -24,4 +25,17 @@ base class SparkyBase {
   final LogConfig logConfig;
   final LogType logType;
   final Pipeline? pipelineBefore, pipelineAfter;
+  final cacheManager = CacheManager();
+
+  Future<Response?> runPipeline(Pipeline? pipeline, HttpRequest request) async {
+    if (pipeline?.mids.isNotEmpty != null) {
+      for (final mid in pipeline!.mids) {
+        final response = await mid(request);
+        if (response != null) {
+          return response;
+        }
+      }
+    }
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 // @author viniciusddrft
 
-import '../types/sparky_types.dart';
+import 'package:sparky/sparky.dart';
 
 /// Base class of a route in Spark; HTTP routes and WebSocket routes extend directly from it.
 base class Route {
@@ -8,8 +8,11 @@ base class Route {
   final Middleware? middleware;
   final MiddlewareWebSocket? middlewareWebSocket;
   final List<AcceptedMethods>? acceptedMethods;
+  int _versionCache = 0;
 
-  const Route(this.name,
+  int get versionCache => _versionCache;
+
+  Route(this.name,
       {this.middleware,
       this.middlewareWebSocket,
       this.acceptedMethods = const [
@@ -22,4 +25,8 @@ base class Route {
         AcceptedMethods.options,
         AcceptedMethods.trace
       ]});
+
+  void onUpdate() {
+    _versionCache += 1;
+  }
 }

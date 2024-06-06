@@ -53,17 +53,9 @@ base class Sparky extends SparkyBase with Logs {
       (HttpRequest request) async {
         final response = request.response;
 
-        Response? pipelineBeforeResponse;
+        Response? pipelineBeforeResponse =
+            await runPipeline(pipelineBefore, request);
 
-        ///Logic to run (N) middlewares before the main route.
-        if (pipelineBefore?.mids.isNotEmpty != null) {
-          for (final mid in pipelineBefore!.mids) {
-            final response = await mid(request);
-            if (response != null) {
-              pipelineBeforeResponse = response;
-            }
-          }
-        }
         if (WebSocketTransformer.isUpgradeRequest(request) &&
             _routeMap[request.uri.path] != null) {
           final websocket = await WebSocketTransformer.upgrade(request);
@@ -73,7 +65,18 @@ base class Sparky extends SparkyBase with Logs {
           final Response routeResponse;
 
           if (pipelineBeforeResponse == null) {
-            routeResponse = await _internalHandler(request);
+            final route = _routeMap[request.uri.path];
+            if (route != null &&
+                cacheManager.verifyVersionCache(_routeMap[request.uri.path]!)) {
+              routeResponse =
+                  cacheManager.getCache(_routeMap[request.uri.path]!);
+            } else {
+              routeResponse = await _internalHandler(request);
+              if (route != null) {
+                cacheManager.saveCache(
+                    _routeMap[request.uri.path]!, routeResponse);
+              }
+            }
           } else {
             routeResponse = pipelineBeforeResponse;
           }
@@ -85,12 +88,7 @@ base class Sparky extends SparkyBase with Logs {
             ..write(routeResponse.body);
           response.close();
 
-          ///Logic to run (N) middlewares after the main route.
-          if (pipelineAfter?.mids.isNotEmpty != null) {
-            for (final mid in pipelineAfter!.mids) {
-              await mid(request);
-            }
-          }
+          await runPipeline(pipelineAfter, request);
 
           _requestServerLog(request, routeResponse);
         }
