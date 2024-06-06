@@ -1,4 +1,8 @@
-# 1.0.15
+# 1.1.0
+
+- Cache Adicionado!!!
+
+## 1.0.15
 
 - Foram adicionados os metodos de requisição web que faltavam.
 

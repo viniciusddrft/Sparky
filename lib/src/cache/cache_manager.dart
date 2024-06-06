@@ -1,8 +1,7 @@
-import 'package:sparky/sparky.dart';
-import 'package:sparky/src/cache/cache_entry.dart';
+part of '../sparky_server_base.dart';
 
-final class CacheManager {
-  final _cache = <Route, CacheEntry>{};
+final class _CacheManager {
+  final _cache = <Route, _CacheEntry>{};
 
   bool verifyVersionCache(Route route) {
     return _cache.containsKey(route) &&
@@ -15,7 +14,14 @@ final class CacheManager {
 
   void saveCache(Route route, Response response) {
     _cache.addAll({
-      route: CacheEntry(response: response, version: route.versionCache),
+      route: _CacheEntry(response: response, version: route.versionCache),
     });
   }
+}
+
+final class _CacheEntry {
+  final Response response;
+  final int version;
+
+  const _CacheEntry({required this.response, required this.version});
 }

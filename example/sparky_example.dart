@@ -56,7 +56,21 @@ void main() {
       ],
       pipelineBefore: Pipeline()
         ..add((HttpRequest request) async {
-          return null;
+          if (request.requestedUri.path == '/login') {
+            return null;
+          } else {
+            if (request.headers['token'] != null) {
+              if (request.headers['token'] != null &&
+                  authJwt.verifyToken(request.headers['token']!.first)) {
+                random.onUpdate();
+                return null;
+              } else {
+                return Response.unauthorized(body: 'Não autorizado');
+              }
+            } else {
+              return Response.unauthorized(body: 'Envie o token no header');
+            }
+          }
         }),
       pipelineAfter: Pipeline()
         ..add((request) async {

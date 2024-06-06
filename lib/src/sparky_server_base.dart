@@ -2,11 +2,11 @@
 
 import 'dart:io';
 import 'package:sparky/sparky.dart';
-import 'cache/cache_manager.dart';
 
 /// Main logic file of Sparky's operation.
 
 part 'package:sparky/src/pipeline/pipeline.dart';
+part 'cache/cache_manager.dart';
 
 base class SparkyBase {
   SparkyBase(
@@ -25,7 +25,7 @@ base class SparkyBase {
   final LogConfig logConfig;
   final LogType logType;
   final Pipeline? pipelineBefore, pipelineAfter;
-  final cacheManager = CacheManager();
+  final cacheManager = _CacheManager();
 
   Future<Response?> runPipeline(Pipeline? pipeline, HttpRequest request) async {
     if (pipeline?.mids.isNotEmpty != null) {
