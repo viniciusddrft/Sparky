@@ -1,4 +1,4 @@
-// @author viniciusddrft
+// Author: viniciusddrft
 
 import '../types/sparky_types.dart';
 import 'route_base.dart';

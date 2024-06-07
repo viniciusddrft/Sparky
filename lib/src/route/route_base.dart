@@ -1,4 +1,4 @@
-// @author viniciusddrft
+// Author: viniciusddrft
 
 import 'package:sparky/sparky.dart';
 

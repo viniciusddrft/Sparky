@@ -194,7 +194,7 @@ dart compile exe main.dart
 
 ## How does cache work
 
-By default, after a route runs, it will be cached and will always return the same response. For the code of this route to work again and deliver a different value, you need to call the 'onUpdate' function. This explicitly indicates not to use the cache, and it will run the route's code normally. This makes it easier to work with cache as you can add logic to the pipeline system to control whether the cache should be used or not.
+By default, after a route runs, it will be cached and will always return the same response. For the code of this route to work again and deliver a different value, you need to call the 'onUpdate' function. This explicitly indicates not to use the cache, and it will run the route's code normally. This makes it easier to work with cache as you can add logic to the pipeline system to control whether the cache should be used or not, this allows you to control the cache of each route directly in an easy way.
 
 ```dart
 import  'dart:io';

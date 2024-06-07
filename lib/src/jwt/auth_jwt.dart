@@ -1,17 +1,25 @@
-// @author viniciusddrft
+/// Author: viniciusddrft
+///
+/// This class provides the foundation for handling authentication using JWT tokens.
+/// It takes a secret key in the constructor, which is used to sign the JWT tokens.
+library;
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
-/// This class provides the foundation for handling login using JWT tokens
-/// it receives a secret key in the constructor to apply to the JWT token.
 final class AuthJwt {
   final String secretKey;
 
+  /// Constructs an [AuthJwt] instance with the provided secret key.
+  ///
+  /// The [secretKey] is used for signing the JWT tokens.
   const AuthJwt({required this.secretKey});
 
-  /// This function takes a payload, which is a [Map<String, Object>] payload
-  /// where login data will be sent and a token will be returned.
+  /// Generates a JWT token from the given [payload].
+  ///
+  /// The [payload] is a [Map<String, Object>] containing the login data.
+  /// This function returns a signed JWT token as a [String].
   String generateToken(Map<String, Object> payload) {
     final header = json.encode({'alg': 'HS256', 'typ': 'JWT'});
     final encodedHeader = base64Url.encode(utf8.encode(header));
@@ -20,7 +28,11 @@ final class AuthJwt {
     return '$encodedHeader.$encodedPayload.$signature';
   }
 
-  //token verification function.
+  /// Verifies the given JWT [token].
+  ///
+  /// This function checks if the token is valid by comparing the signature
+  /// with a newly computed HMAC SHA-256 signature. Returns `true` if the
+  /// token is valid, otherwise `false`.
   bool verifyToken(String token) {
     final parts = token.split('.');
     if (parts.length != 3) return false;
@@ -28,7 +40,9 @@ final class AuthJwt {
     return parts[2] == signature;
   }
 
-  //function that performs the conversion to sha256.
+  /// Computes the HMAC SHA-256 signature for the given [input] using the [key].
+  ///
+  /// This function returns the computed signature as a base64 URL-encoded [String].
   String _hmacSha256(String input, String key) {
     final hmac = Hmac(sha256, utf8.encode(key));
     final digest = hmac.convert(utf8.encode(input));

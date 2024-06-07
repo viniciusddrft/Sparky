@@ -200,7 +200,7 @@ por padrão depois que uma rota rodar ela já vai ter cache e sempre retornara a
 para que o código dessa rota volte a funcionar e ele entregue um valor diferente é preciso chamar a função
 'onUpdate' isso diz de forma explicita que não é para usar o cache e ele vai rodar o código da rota normalmente,
 assim fica mais fácil de trabalhar com cache você pode adicionar no sistema de pipeline uma lógica para controlar se
-o chace deve ser usado ou não.
+o chace deve ser usado ou não, isso te permite controlar o cache de cada rota diretamente de maneira fácil.
 
 ```dart
 import  'dart:io';
