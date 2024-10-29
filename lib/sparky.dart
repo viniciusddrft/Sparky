@@ -1,7 +1,7 @@
 /// @author viniciusddrft
 /// Support for doing something awesome.
 /// More dartdocs go here.
-library sparky;
+library;
 
 export 'src/sparky_server.dart';
 export 'src/response/response.dart';
