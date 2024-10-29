@@ -6,6 +6,7 @@ Sparky is a package that helps in building rest apis in a simple way with websoc
 
 ## Characteristics
 
+- Automatic caching on routes
 - Records system.
 - WebSocket support.
 - JWT authentication.

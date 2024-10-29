@@ -6,6 +6,7 @@ Sparky é pacote que ajuda na construção de apis rest de forma simples com sup
 
 ## Features
 
+- Cache automático nas rotas
 - Sistema de logs.
 - Suporte a webSocket.
 - Autenticação JWT.

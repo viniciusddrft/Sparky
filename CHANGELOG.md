@@ -1,4 +1,8 @@
-# 1.1.0
+# 1.1.1
+
+- update packages!!!
+
+## 1.1.0
 
 - Cache Adicionado!!!
 
