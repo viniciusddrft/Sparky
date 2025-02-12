@@ -13,8 +13,12 @@ void main() {
   final authJwt = AuthJwt(secretKey: 'senha');
 
   final login =
-      RouteHttp.get('/login', middleware: (HttpRequest request) async {
-    final token = authJwt.generateToken({'username': 'username'});
+      RouteHttp.post('/login', middleware: (HttpRequest request) async {
+    final data = await request.getBodyParams();
+
+    print(data);
+    final token = authJwt.generateToken(
+        {'username': data['user'] ?? '', 'password': data['pass'] ?? ''});
 
     return Response.ok(body: '{"token":"$token"}');
   });
@@ -55,23 +59,11 @@ void main() {
         RouteSocket(),
       ],
       pipelineBefore: Pipeline()
-        ..add((HttpRequest request) async {
-          if (request.requestedUri.path == '/login') {
-            return null;
-          } else {
-            if (request.headers['token'] != null) {
-              if (request.headers['token'] != null &&
-                  authJwt.verifyToken(request.headers['token']!.first)) {
-                random.onUpdate();
-                return null;
-              } else {
-                return Response.unauthorized(body: 'Não autorizado');
-              }
-            } else {
-              return Response.unauthorized(body: 'Envie o token no header');
-            }
-          }
-        }),
+        ..add(((request) async {
+          login.onUpdate();
+          final data = await request.getBodyParams();
+          return null;
+        })),
       pipelineAfter: Pipeline()
         ..add((request) async {
           print('pipeline after 1 done');

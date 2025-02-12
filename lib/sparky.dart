@@ -11,3 +11,4 @@ export 'src/route/route_web_socket.dart';
 export 'src/jwt/auth_jwt.dart';
 export 'src/types/sparky_types.dart';
 export 'src/sparky_server_base.dart';
+export 'src/extensions/http_request.dart';
