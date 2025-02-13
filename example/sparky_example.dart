@@ -16,7 +16,6 @@ void main() {
       RouteHttp.post('/login', middleware: (HttpRequest request) async {
     final data = await request.getBodyParams();
 
-    print(data);
     final token = authJwt.generateToken(
         {'username': data['user'] ?? '', 'password': data['pass'] ?? ''});
 
@@ -60,10 +59,24 @@ void main() {
       ],
       pipelineBefore: Pipeline()
         ..add(((request) async {
+          if (request.uri.path == login.name) return null;
+
           login.onUpdate();
+
           final data = await request.getBodyParams();
+
+          if (data['auth'] != null && authJwt.verifyToken(data['auth']!)) {
+            return null;
+          }
+
+          return Response.forbidden(body: 'envia o header');
+        }))
+        ..add((request) async {
+          if (request.uri.path == random.name) {
+            random.onUpdate();
+          }
           return null;
-        })),
+        }),
       pipelineAfter: Pipeline()
         ..add((request) async {
           print('pipeline after 1 done');
