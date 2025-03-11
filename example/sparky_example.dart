@@ -59,9 +59,9 @@ void main() {
       ],
       pipelineBefore: Pipeline()
         ..add(((request) async {
-          if (request.uri.path == login.name) return null;
-
           login.onUpdate();
+
+          if (request.uri.path == login.name) return null;
 
           final data = await request.getBodyParams();
 
@@ -69,7 +69,7 @@ void main() {
             return null;
           }
 
-          return Response.forbidden(body: 'envia o header');
+          return Response.forbidden(body: 'envie o header');
         }))
         ..add((request) async {
           if (request.uri.path == random.name) {
