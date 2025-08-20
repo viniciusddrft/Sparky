@@ -10,7 +10,7 @@ void main() {
   /// The example also illustrates a JWT login and the pipeline systems before and after
   /// the main route.
 
-  final authJwt = AuthJwt(secretKey: 'senha');
+  const authJwt = AuthJwt(secretKey: 'senha');
 
   final login =
       RouteHttp.post('/login', middleware: (HttpRequest request) async {
@@ -24,7 +24,7 @@ void main() {
 
   final todo =
       RouteHttp.get('/todo/list', middleware: (HttpRequest request) async {
-    return Response.ok(body: '[0,1,2,3,4,5,6,7,8,9]');
+    return const Response.ok(body: '[0,1,2,3,4,5,6,7,8,9]');
   });
 
   final random =
@@ -69,7 +69,7 @@ void main() {
             return null;
           }
 
-          return Response.forbidden(body: 'envie o header');
+          return const Response.forbidden(body: 'envie o header');
         }))
         ..add((request) async {
           if (request.uri.path == random.name) {
@@ -93,7 +93,7 @@ void main() {
 final class RouteTest extends Route {
   RouteTest()
       : super('/test', middleware: (request) async {
-          return Response.ok(body: 'test');
+          return const Response.ok(body: 'test');
         }, acceptedMethods: [
           AcceptedMethods.get,
           AcceptedMethods.post,

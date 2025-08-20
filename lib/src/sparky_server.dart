@@ -53,7 +53,7 @@ base class Sparky extends SparkyBase with Logs {
       (HttpRequest request) async {
         final response = request.response;
 
-        Response? pipelineBeforeResponse =
+        final Response? pipelineBeforeResponse =
             await runPipeline(pipelineBefore, request);
 
         if (WebSocketTransformer.isUpgradeRequest(request) &&
@@ -119,7 +119,7 @@ base class Sparky extends SparkyBase with Logs {
         return Route(
           '/405',
           middleware: (request) async {
-            return Response.notFound(
+            return const Response.notFound(
                 body: "{'errorCode':'405','message':'Method Not Allowed'}");
           },
         ).middleware!(request);
@@ -127,7 +127,7 @@ base class Sparky extends SparkyBase with Logs {
     } else {
       return Route('/404', middleware: (request) async {
         return await routeNotFound?.middleware!(request) ??
-            Response.notFound(
+            const Response.notFound(
                 body: "{'errorCode':'404','message':'Not Found'}");
       }).middleware!(request);
     }
