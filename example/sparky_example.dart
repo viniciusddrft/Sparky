@@ -38,9 +38,7 @@ void main() {
     middlewareWebSocket: (WebSocket socket) async {
       socket.add('Hello Word');
       socket.listen(
-        (event) {
-          print(event);
-        },
+        print,
         onDone: () {
           socket.close();
         },
@@ -103,9 +101,7 @@ final class RouteTest extends Route {
 final class RouteSocket extends Route {
   RouteSocket()
       : super('/socket', middlewareWebSocket: (WebSocket webSocket) async {
-          webSocket.listen((event) {
-            print(event);
-          }, onDone: () {
+          webSocket.listen(print, onDone: () {
             webSocket.close();
           });
         });

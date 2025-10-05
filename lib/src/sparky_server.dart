@@ -106,7 +106,7 @@ base class Sparky extends SparkyBase with Logs {
   }
 
   /// Private function that handles executing the code for each route.
-  Future<Response> _internalHandler(HttpRequest request) async {
+  Future<Response> _internalHandler(HttpRequest request) {
     final Route? route = _routeMap[request.uri.path];
 
     if (route != null) {

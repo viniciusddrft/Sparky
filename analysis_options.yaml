@@ -18,13 +18,27 @@ include: package:lints/recommended.yaml
 linter:
   rules:
     always_declare_return_types: true
+    unnecessary_async: true
+    no_leading_underscores_for_local_identifiers: true
     unnecessary_await_in_return: true
     prefer_single_quotes: true
     prefer_final_locals: true
+    prefer_final_fields: true
     avoid_unused_constructor_parameters: true
     prefer_const_declarations: true
     prefer_const_constructors: true
     prefer_const_literals_to_create_immutables: true
+    avoid_init_to_null: true
+    prefer_interpolation_to_compose_strings: true
+    tighten_type_of_initializing_formals: true
+    prefer_inlined_adds: true            
+    unnecessary_lambdas: true            
+    avoid_function_literals_in_foreach_calls: true  
+    use_string_buffers: true                
+    prefer_is_empty: true                   
+    prefer_spread_collections: true
+    prefer_const_constructors_in_immutables: true
+    avoid_redundant_argument_values: true
 #   rules:
 #     - camel_case_types
 
