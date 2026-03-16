@@ -12,37 +12,72 @@ final class AuthJwt {
   final String secretKey;
 
   /// Constructs an [AuthJwt] instance with the provided secret key.
-  ///
-  /// The [secretKey] is used for signing the JWT tokens.
   const AuthJwt({required this.secretKey});
 
   /// Generates a JWT token from the given [payload].
   ///
-  /// The [payload] is a [Map<String, Object>] containing the login data.
-  /// This function returns a signed JWT token as a [String].
-  String generateToken(Map<String, Object> payload) {
+  /// If [expiresIn] is provided, an `exp` claim is added automatically.
+  /// An `iat` (issued at) claim is always added with the current time.
+  String generateToken(Map<String, Object> payload, {Duration? expiresIn}) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final claims = <String, Object>{
+      ...payload,
+      'iat': now,
+    };
+    if (expiresIn != null) {
+      claims['exp'] = now + expiresIn.inSeconds;
+    }
+
     final header = json.encode({'alg': 'HS256', 'typ': 'JWT'});
     final encodedHeader = base64Url.encode(utf8.encode(header));
-    final encodedPayload = base64Url.encode(utf8.encode(json.encode(payload)));
+    final encodedPayload = base64Url.encode(utf8.encode(json.encode(claims)));
     final signature = _hmacSha256('$encodedHeader.$encodedPayload', secretKey);
     return '$encodedHeader.$encodedPayload.$signature';
   }
 
   /// Verifies the given JWT [token].
   ///
-  /// This function checks if the token is valid by comparing the signature
-  /// with a newly computed HMAC SHA-256 signature. Returns `true` if the
-  /// token is valid, otherwise `false`.
+  /// Checks the signature and, if an `exp` claim is present,
+  /// verifies that the token has not expired.
+  /// Returns `true` if valid, `false` otherwise.
   bool verifyToken(String token) {
     final parts = token.split('.');
     if (parts.length != 3) return false;
     final signature = _hmacSha256('${parts[0]}.${parts[1]}', secretKey);
-    return parts[2] == signature;
+    if (parts[2] != signature) return false;
+
+    final payload = decodePayload(token);
+    if (payload == null) return false;
+
+    if (payload.containsKey('exp')) {
+      final exp = payload['exp'];
+      if (exp is int) {
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        if (now > exp) return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Decodes and returns the payload from a JWT [token] without verifying
+  /// the signature. Returns `null` if the token format is invalid.
+  Map<String, dynamic>? decodePayload(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+
+    try {
+      final normalized = base64Url.normalize(parts[1]);
+      final payloadString = utf8.decode(base64Url.decode(normalized));
+      final decoded = json.decode(payloadString);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Computes the HMAC SHA-256 signature for the given [input] using the [key].
-  ///
-  /// This function returns the computed signature as a base64 URL-encoded [String].
   String _hmacSha256(String input, String key) {
     final hmac = Hmac(sha256, utf8.encode(key));
     final digest = hmac.convert(utf8.encode(input));

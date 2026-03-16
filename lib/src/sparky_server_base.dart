@@ -16,11 +16,12 @@ base class SparkyBase {
       this.routeNotFound,
       this.logConfig = LogConfig.showAndWriteLogs,
       this.logType = LogType.all,
+      this.logFilePath = 'logs.txt',
       this.pipelineAfter,
       this.pipelineBefore});
   final List<Route> routes;
   final int port;
-  final String ip;
+  final String ip, logFilePath;
   final Route? routeNotFound;
   final LogConfig logConfig;
   final LogType logType;
@@ -28,8 +29,8 @@ base class SparkyBase {
   final cacheManager = _CacheManager();
 
   Future<Response?> runPipeline(Pipeline? pipeline, HttpRequest request) async {
-    if (pipeline?.mids.isNotEmpty != null) {
-      for (final mid in pipeline!.mids) {
+    if (pipeline != null && pipeline.mids.isNotEmpty) {
+      for (final mid in pipeline.mids) {
         final response = await mid(request);
         if (response != null) {
           return response;

@@ -1,3 +1,43 @@
+# 2.0.0
+
+### Correções de Bugs
+
+- **`runPipeline`**: Corrigida condição que sempre avaliava como `true` (`!= null` trocado por checagem correta de `isNotEmpty`).
+- **Sistema de logs**: Reestruturada a lógica dos métodos `_openServerLog`, `_errorServerLog` e `_requestServerLog` para que o modo `LogConfig.writeLogs` funcione corretamente (antes o arquivo de log nunca era criado nesse modo).
+- **Status 405**: Corrigido handler de "Method Not Allowed" que retornava status 404 em vez de 405.
+- **Estado global no `RequestTools`**: Removidas variáveis top-level mutáveis (`_hash` e `_cache`) compartilhadas entre requisições concorrentes, substituídas por `Expando` para isolamento por request.
+- **`_start()` async void**: Corrigido para `Future<void>`, com validações síncronas no construtor e binding assíncrono observável via `server.ready`.
+- **JSON inválido nos erros**: Bodies de erro internos agora usam JSON válido com aspas duplas em vez de aspas simples.
+- **Objetos `Route` temporários**: Removida criação desnecessária de `Route('/404', ...)` e `Route('/405', ...)` no `_internalHandler`, retornando `Response` diretamente.
+
+### Novas Funcionalidades
+
+- **Rotas dinâmicas com path parameters**: Suporte a segmentos dinâmicos usando sintaxe `:param` (ex: `/users/:id`, `/products/:category/:itemId`). Parâmetros acessíveis via `request.pathParams['id']`.
+- **Parsing de JSON body e URL-encoded**: Novos métodos `getJsonBody()` (retorna `Map<String, dynamic>`), `getFormData()` (para `application/x-www-form-urlencoded`) e `getRawBody()` (body cru com cache) na extension `RequestTools`.
+- **Suporte a CORS**: Nova classe `CorsConfig` com construtores `CorsConfig()` e `CorsConfig.permissive()`, e método `createMiddleware()` para adicionar ao pipeline. Trata preflight `OPTIONS` automaticamente.
+- **Headers customizados na Response**: Novo campo opcional `Map<String, String>? headers` em todos os construtores de `Response`, aplicados automaticamente na resposta HTTP.
+- **JWT com expiração e decodificação**: `generateToken()` agora aceita `Duration? expiresIn` e adiciona claims `iat` e `exp`. `verifyToken()` valida expiração automaticamente. Novo método `decodePayload()` para extrair dados do token.
+- **Agrupamento de rotas (RouteGroup)**: Nova classe `RouteGroup` que permite agrupar rotas sob um prefixo comum (ex: `RouteGroup('/api/v1', routes: [...]).flatten()`).
+- **Serialização automática para JSON**: O `body` da `Response` agora aceita `Object` (String, Map, List). Valores não-String são serializados automaticamente com `json.encode`.
+- **Graceful shutdown**: Novo método `close()` no `Sparky` para encerrar o servidor de forma limpa, cancelando a subscription e fechando o arquivo de log.
+- **try-catch global**: Erros não tratados em middlewares/handlers agora retornam `500 Internal Server Error` em vez de travar o servidor.
+- **Cache diferenciado por método HTTP**: O cache agora usa a combinação de `Route` + método HTTP como chave, evitando que GET e POST na mesma rota compartilhem cache.
+- **Nome do arquivo de log configurável**: Novo parâmetro `logFilePath` no construtor de `Sparky.server` (padrão: `'logs.txt'`).
+- **`pipelineAfter` em WebSocket**: O `pipelineAfter` agora também é executado após conexões WebSocket.
+- **`server.ready`**: Nova propriedade `Future<void> get ready` para aguardar o servidor estar pronto.
+
+### Testes
+
+- Adicionados 42 testes unitários e de integração cobrindo: validação de rotas, Response (status codes, auto-serialização, headers), JWT (geração, verificação, expiração, decodificação), route matching (estático e dinâmico), cache versioning, RouteHttp, RouteGroup, Pipeline, CorsConfig, integração HTTP completa (GET, POST, 404, 405, path params) e graceful shutdown.
+
+### Breaking Changes
+
+- O campo `body` de `Response` agora é do tipo `Object` internamente (acessado via getter `String get body`). Código existente que usa `String` continua funcionando sem alterações.
+- `_CacheManager` agora requer o método HTTP como parâmetro em `verifyVersionCache`, `getCache` e `saveCache`.
+- O construtor `Sparky.server` agora aceita `logFilePath` como parâmetro opcional.
+
+---
+
 # 1.1.1
 
 - update packages!!!

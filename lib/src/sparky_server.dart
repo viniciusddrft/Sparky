@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:sparky/src/sparky_server_base.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 import 'errors/sparky_error.dart';
+import 'extensions/http_request.dart';
 import 'response/response.dart';
 import 'route/route_base.dart';
 
@@ -20,83 +21,125 @@ base class Sparky extends SparkyBase with Logs {
     super.routeNotFound,
     super.logConfig = LogConfig.showAndWriteLogs,
     super.logType = LogType.all,
+    super.logFilePath = 'logs.txt',
     super.pipelineBefore,
     super.pipelineAfter,
   }) {
-    _start();
-    _routeMap = {for (final route in routes) route.name: route};
+    _init();
   }
 
   late final HttpServer _server;
-  late final Map<String, Route> _routeMap;
+  late final Map<String, Route> _staticRouteMap;
+  late final List<Route> _dynamicRoutes;
+  StreamSubscription<HttpRequest>? _subscription;
 
-  ///Private function checks for routes with duplicate names.
+  void _init() {
+    if (routes.isEmpty) {
+      throw ErrorRouteEmpty();
+    }
+    if (_checkRepeatedRoutes(routes.map((e) => e.name))) {
+      throw RoutesRepeated();
+    }
+    _staticRouteMap = {
+      for (final route in routes)
+        if (!route.isDynamic) route.name: route
+    };
+    _dynamicRoutes = routes.where((r) => r.isDynamic).toList();
+    _startFuture = _start();
+  }
+
+  late final Future<void> _startFuture;
+
+  /// Returns the future that completes when the server is bound and listening.
+  Future<void> get ready => _startFuture;
+
   bool _checkRepeatedRoutes(Iterable<String> routes) {
     final checkedElements = <String>{};
-
     return routes.any((name) => !checkedElements.add(name));
   }
 
-  ///Private function that initializes Sparky.
-  void _start() async {
-    if (_checkRepeatedRoutes(routes.map((e) => e.name))) {
-      throw RoutesRepeated();
-    } else if (routes.isEmpty) {
-      throw ErrorRouteEmpty();
-    }
+  /// Resolves a route for the given [path], setting path params on [request].
+  /// Returns `null` if no route matches.
+  Route? _resolveRoute(String path, HttpRequest request) {
+    final staticRoute = _staticRouteMap[path];
+    if (staticRoute != null) return staticRoute;
 
+    for (final route in _dynamicRoutes) {
+      final params = route.matchPath(path);
+      if (params != null) {
+        request.pathParams = params;
+        return route;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _start() async {
     _server = await HttpServer.bind(ip, port);
 
     _openServerLog();
 
-    _listenHttp(
+    _subscription = _server.listen(
       (HttpRequest request) async {
-        final response = request.response;
+        try {
+          final response = request.response;
+          final path = request.uri.path;
 
-        final Response? pipelineBeforeResponse =
-            await runPipeline(pipelineBefore, request);
+          final Response? pipelineBeforeResponse =
+              await runPipeline(pipelineBefore, request);
 
-        if (WebSocketTransformer.isUpgradeRequest(request) &&
-            _routeMap[request.uri.path] != null) {
-          final websocket = await WebSocketTransformer.upgrade(request);
+          final route = _resolveRoute(path, request);
 
-          _routeMap[request.uri.path]!.middlewareWebSocket!(websocket);
-        } else {
-          final Response routeResponse;
-
-          if (pipelineBeforeResponse == null) {
-            final route = _routeMap[request.uri.path];
-            if (route != null &&
-                cacheManager.verifyVersionCache(_routeMap[request.uri.path]!)) {
-              routeResponse =
-                  cacheManager.getCache(_routeMap[request.uri.path]!);
-            } else {
-              routeResponse = await _internalHandler(request);
-              if (route != null) {
-                cacheManager.saveCache(
-                    _routeMap[request.uri.path]!, routeResponse);
-              }
-            }
+          if (WebSocketTransformer.isUpgradeRequest(request) && route != null) {
+            final websocket = await WebSocketTransformer.upgrade(request);
+            route.middlewareWebSocket!(websocket);
+            await runPipeline(pipelineAfter, request);
           } else {
-            routeResponse = pipelineBeforeResponse;
+            final Response routeResponse;
+
+            if (pipelineBeforeResponse == null) {
+              if (route != null &&
+                  cacheManager.verifyVersionCache(route, request.method)) {
+                routeResponse = cacheManager.getCache(route, request.method);
+              } else {
+                routeResponse = await _internalHandler(request, route);
+                if (route != null) {
+                  cacheManager.saveCache(route, request.method, routeResponse);
+                }
+              }
+            } else {
+              routeResponse = pipelineBeforeResponse;
+            }
+
+            response
+              ..headers.contentType =
+                  routeResponse.contentType ?? ContentType.json
+              ..statusCode = routeResponse.status;
+            if (routeResponse.headers != null) {
+              routeResponse.headers!.forEach((key, value) {
+                response.headers.set(key, value);
+              });
+            }
+            response.write(routeResponse.body);
+            response.close();
+
+            await runPipeline(pipelineAfter, request);
+            _requestServerLog(request, routeResponse);
           }
-
-          response
-            ..headers.contentType =
-                routeResponse.contentType ?? ContentType.json
-            ..statusCode = routeResponse.status
-            ..write(routeResponse.body);
-          response.close();
-
-          await runPipeline(pipelineAfter, request);
-
-          _requestServerLog(request, routeResponse);
+        } catch (e) {
+          _errorServerLog(e);
+          try {
+            final response = request.response;
+            response
+              ..statusCode = HttpStatus.internalServerError
+              ..headers.contentType = ContentType.json
+              ..write('{"errorCode":"500","message":"Internal Server Error"}');
+            response.close();
+          } catch (_) {}
         }
       },
       onError: (e) {
         _errorServerLog(e);
-        _file?.flush();
-        _file?.close();
       },
       onDone: () {
         _file?.flush();
@@ -105,41 +148,30 @@ base class Sparky extends SparkyBase with Logs {
     );
   }
 
-  /// Private function that handles executing the code for each route.
-  Future<Response> _internalHandler(HttpRequest request) {
-    final Route? route = _routeMap[request.uri.path];
-
+  Future<Response> _internalHandler(HttpRequest request, Route? route) async {
     if (route != null) {
       final acceptedMethods = route.acceptedMethods?.map((e) => e.text);
       if (acceptedMethods != null &&
           acceptedMethods.contains(request.method) &&
           route.middleware != null) {
         return route.middleware!(request);
-      } else {
-        return Route(
-          '/405',
-          middleware: (request) async {
-            return const Response.notFound(
-                body: "{'errorCode':'405','message':'Method Not Allowed'}");
-          },
-        ).middleware!(request);
       }
-    } else {
-      return Route('/404', middleware: (request) async {
-        return await routeNotFound?.middleware!(request) ??
-            const Response.notFound(
-                body: "{'errorCode':'404','message':'Not Found'}");
-      }).middleware!(request);
+      return const Response.methodNotAllowed(
+          body: '{"errorCode":"405","message":"Method Not Allowed"}');
     }
+
+    if (routeNotFound?.middleware != null) {
+      return routeNotFound!.middleware!(request);
+    }
+    return const Response.notFound(
+        body: '{"errorCode":"404","message":"Not Found"}');
   }
 
-  /// Private function that listens for HTTP requests.
-  StreamSubscription<HttpRequest> _listenHttp(
-      void Function(HttpRequest)? onData,
-      {Function? onError,
-      void Function()? onDone,
-      bool? cancelOnError}) {
-    return _server.listen(onData,
-        onDone: onDone, onError: onError, cancelOnError: cancelOnError);
+  /// Gracefully shuts down the server.
+  Future<void> close() async {
+    await _subscription?.cancel();
+    await _server.close();
+    await _file?.flush();
+    await _file?.close();
   }
 }

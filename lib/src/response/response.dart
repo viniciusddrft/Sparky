@@ -1,262 +1,386 @@
 // Author: viniciusddrft
 
+import 'dart:convert';
 import 'dart:io';
 
-///This class handles responses, with some constructors already configured with request code.
+/// This class handles responses, with some constructors already configured with request code.
+///
+/// The [body] field accepts any [Object] (String, Map, List, etc.).
+/// Non-String values are automatically serialized to JSON.
 final class Response {
+  final int status;
+  final Object _body;
+  final ContentType? contentType;
+  final Map<String, String>? headers;
+
+  /// Returns the body as a String. Non-String values are JSON-encoded.
+  String get body => _body is String ? _body : json.encode(_body);
+
+  const Response(
+      {required int statusCode,
+      required Object body,
+      this.contentType,
+      this.headers})
+      : status = statusCode,
+        _body = body;
+
   /// Request Success
-  const Response.ok({required this.body, this.contentType})
-      : status = HttpStatus.ok;
+  const Response.ok({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.ok,
+        _body = body;
 
   /// Request Not Found
-  const Response.notFound({required this.body, this.contentType})
-      : status = HttpStatus.notFound;
+  const Response.notFound(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.notFound,
+        _body = body;
 
   /// Request Method Not Allowed
-  const Response.methodNotAllowed({required this.body, this.contentType})
-      : status = HttpStatus.methodNotAllowed;
+  const Response.methodNotAllowed(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.methodNotAllowed,
+        _body = body;
 
   /// Request Bad Request
-  const Response.badRequest({required this.body, this.contentType})
-      : status = HttpStatus.badRequest;
+  const Response.badRequest(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.badRequest,
+        _body = body;
 
   /// Request Accepted
-  const Response.accepted({required this.body, this.contentType})
-      : status = HttpStatus.accepted;
+  const Response.accepted(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.accepted,
+        _body = body;
 
   /// Request Unauthorized
-  const Response.unauthorized({required this.body, this.contentType})
-      : status = HttpStatus.unauthorized;
+  const Response.unauthorized(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.unauthorized,
+        _body = body;
 
   /// Request Forbidden
-  const Response.forbidden({required this.body, this.contentType})
-      : status = HttpStatus.forbidden;
+  const Response.forbidden(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.forbidden,
+        _body = body;
 
   /// Request MovedTemporarily
-  const Response.movedTemporarily({required this.body, this.contentType})
-      : status = HttpStatus.movedTemporarily;
+  const Response.movedTemporarily(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.movedTemporarily,
+        _body = body;
 
   /// Request MovedPermanently
-  const Response.movedPermanently({required this.body, this.contentType})
-      : status = HttpStatus.movedPermanently;
+  const Response.movedPermanently(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.movedPermanently,
+        _body = body;
 
   /// Request AlreadyReported
-  const Response.alreadyReported({required this.body, this.contentType})
-      : status = HttpStatus.alreadyReported;
+  const Response.alreadyReported(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.alreadyReported,
+        _body = body;
 
   /// Request BadGateway
-  const Response.badGateway({required this.body, this.contentType})
-      : status = HttpStatus.badGateway;
+  const Response.badGateway(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.badGateway,
+        _body = body;
 
   /// Request Conflict
-  const Response.conflict({required this.body, this.contentType})
-      : status = HttpStatus.conflict;
+  const Response.conflict(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.conflict,
+        _body = body;
 
   /// Request ConnectionClosedWithoutResponse
   const Response.connectionClosedWithoutResponse(
-      {required this.body, this.contentType})
-      : status = HttpStatus.connectionClosedWithoutResponse;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.connectionClosedWithoutResponse,
+        _body = body;
 
   /// Request Continue_
-  const Response.continue_({required this.body, this.contentType})
-      : status = HttpStatus.continue_;
+  const Response.continue_(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.continue_,
+        _body = body;
 
   /// Request Created
-  const Response.created({required this.body, this.contentType})
-      : status = HttpStatus.created;
+  const Response.created({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.created,
+        _body = body;
 
   /// Request ExpectationFailed
-  const Response.expectationFailed({required this.body, this.contentType})
-      : status = HttpStatus.expectationFailed;
+  const Response.expectationFailed(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.expectationFailed,
+        _body = body;
 
   /// Request FailedDependency
-  const Response.failedDependency({required this.body, this.contentType})
-      : status = HttpStatus.failedDependency;
+  const Response.failedDependency(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.failedDependency,
+        _body = body;
 
   /// Request Found
-  const Response.found({required this.body, this.contentType})
-      : status = HttpStatus.found;
+  const Response.found({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.found,
+        _body = body;
 
   /// Request GatewayTimeout
-  const Response.gatewayTimeout({required this.body, this.contentType})
-      : status = HttpStatus.gatewayTimeout;
+  const Response.gatewayTimeout(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.gatewayTimeout,
+        _body = body;
 
   /// Request Gone
-  const Response.gone({required this.body, this.contentType})
-      : status = HttpStatus.gone;
+  const Response.gone({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.gone,
+        _body = body;
 
   /// Request HttpVersionNotSupported
-  const Response.httpVersionNotSupported({required this.body, this.contentType})
-      : status = HttpStatus.httpVersionNotSupported;
+  const Response.httpVersionNotSupported(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.httpVersionNotSupported,
+        _body = body;
 
   /// Request ImUsed
-  const Response.imUsed({required this.body, this.contentType})
-      : status = HttpStatus.imUsed;
+  const Response.imUsed({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.imUsed,
+        _body = body;
 
   /// Request InsufficientStorage
-  const Response.insufficientStorage({required this.body, this.contentType})
-      : status = HttpStatus.insufficientStorage;
+  const Response.insufficientStorage(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.insufficientStorage,
+        _body = body;
 
   /// Request InternalServerError
-  const Response.internalServerError({required this.body, this.contentType})
-      : status = HttpStatus.internalServerError;
+  const Response.internalServerError(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.internalServerError,
+        _body = body;
 
   /// Request LengthRequired
-  const Response.lengthRequired({required this.body, this.contentType})
-      : status = HttpStatus.lengthRequired;
+  const Response.lengthRequired(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.lengthRequired,
+        _body = body;
 
   /// Request Locked
-  const Response.locked({required this.body, this.contentType})
-      : status = HttpStatus.locked;
+  const Response.locked({required Object body, this.contentType, this.headers})
+      : status = HttpStatus.locked,
+        _body = body;
 
   /// Request LoopDetected
-  const Response.loopDetected({required this.body, this.contentType})
-      : status = HttpStatus.loopDetected;
+  const Response.loopDetected(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.loopDetected,
+        _body = body;
 
   /// Request MisdirectedRequest
-  const Response.misdirectedRequest({required this.body, this.contentType})
-      : status = HttpStatus.misdirectedRequest;
+  const Response.misdirectedRequest(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.misdirectedRequest,
+        _body = body;
 
   /// Request MultiStatus
-  const Response.multiStatus({required this.body, this.contentType})
-      : status = HttpStatus.multiStatus;
+  const Response.multiStatus(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.multiStatus,
+        _body = body;
 
   /// Request MultipleChoices
-  const Response.multipleChoices({required this.body, this.contentType})
-      : status = HttpStatus.multipleChoices;
+  const Response.multipleChoices(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.multipleChoices,
+        _body = body;
 
   /// Request NetworkAuthenticationRequired
   const Response.networkAuthenticationRequired(
-      {required this.body, this.contentType})
-      : status = HttpStatus.networkAuthenticationRequired;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.networkAuthenticationRequired,
+        _body = body;
 
   /// Request NetworkConnectTimeoutError
   const Response.networkConnectTimeoutError(
-      {required this.body, this.contentType})
-      : status = HttpStatus.networkConnectTimeoutError;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.networkConnectTimeoutError,
+        _body = body;
 
   /// Request NoContent
-  const Response.noContent({required this.body, this.contentType})
-      : status = HttpStatus.noContent;
+  const Response.noContent(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.noContent,
+        _body = body;
 
   /// Request NonAuthoritativeInformation
   const Response.nonAuthoritativeInformation(
-      {required this.body, this.contentType})
-      : status = HttpStatus.nonAuthoritativeInformation;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.nonAuthoritativeInformation,
+        _body = body;
 
   /// Request NotAcceptable
-  const Response.notAcceptable({required this.body, this.contentType})
-      : status = HttpStatus.notAcceptable;
+  const Response.notAcceptable(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.notAcceptable,
+        _body = body;
 
   /// Request NotExtended
-  const Response.notExtended({required this.body, this.contentType})
-      : status = HttpStatus.notExtended;
+  const Response.notExtended(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.notExtended,
+        _body = body;
 
   /// Request NotImplemented
-  const Response.notImplemented({required this.body, this.contentType})
-      : status = HttpStatus.notImplemented;
+  const Response.notImplemented(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.notImplemented,
+        _body = body;
 
   /// Request NotModified
-  const Response.notModified({required this.body, this.contentType})
-      : status = HttpStatus.notModified;
+  const Response.notModified(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.notModified,
+        _body = body;
 
   /// Request PartialContent
-  const Response.partialContent({required this.body, this.contentType})
-      : status = HttpStatus.partialContent;
+  const Response.partialContent(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.partialContent,
+        _body = body;
 
   /// Request PaymentRequired
-  const Response.paymentRequired({required this.body, this.contentType})
-      : status = HttpStatus.paymentRequired;
+  const Response.paymentRequired(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.paymentRequired,
+        _body = body;
 
   /// Request PermanentRedirect
-  const Response.permanentRedirect({required this.body, this.contentType})
-      : status = HttpStatus.permanentRedirect;
+  const Response.permanentRedirect(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.permanentRedirect,
+        _body = body;
 
   /// Request PreconditionFailed
-  const Response.preconditionFailed({required this.body, this.contentType})
-      : status = HttpStatus.preconditionFailed;
+  const Response.preconditionFailed(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.preconditionFailed,
+        _body = body;
 
   /// Request Processing
-  const Response.processing({required this.body, this.contentType})
-      : status = HttpStatus.processing;
+  const Response.processing(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.processing,
+        _body = body;
 
   /// Request ProxyAuthenticationRequired
   const Response.proxyAuthenticationRequired(
-      {required this.body, this.contentType})
-      : status = HttpStatus.proxyAuthenticationRequired;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.proxyAuthenticationRequired,
+        _body = body;
 
   /// Request RequestEntityTooLarge
-  const Response.requestEntityTooLarge({required this.body, this.contentType})
-      : status = HttpStatus.requestEntityTooLarge;
+  const Response.requestEntityTooLarge(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.requestEntityTooLarge,
+        _body = body;
 
   /// Request RequestHeaderFieldsTooLarge
   const Response.requestHeaderFieldsTooLarge(
-      {required this.body, this.contentType})
-      : status = HttpStatus.requestHeaderFieldsTooLarge;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.requestHeaderFieldsTooLarge,
+        _body = body;
 
   /// Request RequestTimeout
-  const Response.requestTimeout({required this.body, this.contentType})
-      : status = HttpStatus.requestTimeout;
+  const Response.requestTimeout(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.requestTimeout,
+        _body = body;
 
   /// Request RequestUriTooLong
-  const Response.requestUriTooLong({required this.body, this.contentType})
-      : status = HttpStatus.requestUriTooLong;
+  const Response.requestUriTooLong(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.requestUriTooLong,
+        _body = body;
 
   /// Request RequestedRangeNotSatisfiable
   const Response.requestedRangeNotSatisfiable(
-      {required this.body, this.contentType})
-      : status = HttpStatus.requestedRangeNotSatisfiable;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.requestedRangeNotSatisfiable,
+        _body = body;
 
   /// Request ResetContent
-  const Response.resetContent({required this.body, this.contentType})
-      : status = HttpStatus.resetContent;
+  const Response.resetContent(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.resetContent,
+        _body = body;
 
   /// Request SeeOther
-  const Response.seeOther({required this.body, this.contentType})
-      : status = HttpStatus.seeOther;
+  const Response.seeOther(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.seeOther,
+        _body = body;
 
   /// Request ServiceUnavailable
-  const Response.serviceUnavailable({required this.body, this.contentType})
-      : status = HttpStatus.serviceUnavailable;
+  const Response.serviceUnavailable(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.serviceUnavailable,
+        _body = body;
 
   /// Request SwitchingProtocols
-  const Response.switchingProtocols({required this.body, this.contentType})
-      : status = HttpStatus.switchingProtocols;
+  const Response.switchingProtocols(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.switchingProtocols,
+        _body = body;
 
   /// Request TemporaryRedirect
-  const Response.temporaryRedirect({required this.body, this.contentType})
-      : status = HttpStatus.temporaryRedirect;
+  const Response.temporaryRedirect(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.temporaryRedirect,
+        _body = body;
 
   /// Request TooManyRequests
-  const Response.tooManyRequests({required this.body, this.contentType})
-      : status = HttpStatus.tooManyRequests;
+  const Response.tooManyRequests(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.tooManyRequests,
+        _body = body;
 
   /// Request UnavailableForLegalReasons
   const Response.unavailableForLegalReasons(
-      {required this.body, this.contentType})
-      : status = HttpStatus.unavailableForLegalReasons;
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.unavailableForLegalReasons,
+        _body = body;
 
   /// Request UnprocessableEntity
-  const Response.unprocessableEntity({required this.body, this.contentType})
-      : status = HttpStatus.unprocessableEntity;
+  const Response.unprocessableEntity(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.unprocessableEntity,
+        _body = body;
 
   /// Request UnsupportedMediaType
-  const Response.unsupportedMediaType({required this.body, this.contentType})
-      : status = HttpStatus.unsupportedMediaType;
+  const Response.unsupportedMediaType(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.unsupportedMediaType,
+        _body = body;
 
   /// Request UpgradeRequired
-  const Response.upgradeRequired({required this.body, this.contentType})
-      : status = HttpStatus.upgradeRequired;
+  const Response.upgradeRequired(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.upgradeRequired,
+        _body = body;
 
   /// Request UseProxy
-  const Response.useProxy({required this.body, this.contentType})
-      : status = HttpStatus.useProxy;
+  const Response.useProxy(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.useProxy,
+        _body = body;
 
   /// Request VariantAlsoNegotiates
-  const Response.variantAlsoNegotiates({required this.body, this.contentType})
-      : status = HttpStatus.variantAlsoNegotiates;
-
-  final int status;
-  final String body;
-  final ContentType? contentType;
+  const Response.variantAlsoNegotiates(
+      {required Object body, this.contentType, this.headers})
+      : status = HttpStatus.variantAlsoNegotiates,
+        _body = body;
 }
