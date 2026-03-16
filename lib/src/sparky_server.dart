@@ -99,11 +99,12 @@ base class Sparky extends SparkyBase with Logs {
 
             if (pipelineBeforeResponse == null) {
               if (route != null &&
+                  !route.isDynamic &&
                   cacheManager.verifyVersionCache(route, request.method)) {
                 routeResponse = cacheManager.getCache(route, request.method);
               } else {
                 routeResponse = await _internalHandler(request, route);
-                if (route != null) {
+                if (route != null && !route.isDynamic) {
                   cacheManager.saveCache(route, request.method, routeResponse);
                 }
               }

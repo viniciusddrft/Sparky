@@ -1,3 +1,13 @@
+# 2.0.1
+
+### Correções de Bugs
+
+- **Cache em rotas dinâmicas**: Rotas com path parameters (`:param`) não são mais cacheadas, corrigindo bug onde `/users/2` retornava os dados de `/users/1` (cache usava o objeto `Route` como chave, ignorando os parâmetros reais).
+- **`RouteGroup.flatten()` perdia `acceptedMethods`**: Rotas criadas com `RouteHttp.get()` dentro de um `RouteGroup` passavam a aceitar todos os métodos HTTP após o `flatten()`. Agora o `acceptedMethods` é preservado corretamente.
+- **CORS double close**: O middleware de CORS fechava `request.response` diretamente e depois retornava um `Response`, fazendo o servidor tentar escrever na response já fechada (`HttpException: HTTP headers are not mutable`). Agora o preflight OPTIONS retorna um `Response` com os headers CORS sem manipular a response diretamente, e o `pipelineAfter` executa normalmente.
+
+---
+
 # 2.0.0
 
 ### Correções de Bugs

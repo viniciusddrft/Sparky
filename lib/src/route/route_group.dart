@@ -27,7 +27,9 @@ final class RouteGroup {
     return _routes.map((route) {
       final fullPath = '$prefix${route.name}';
       if (route is RouteHttp) {
-        return RouteHttp(fullPath, middleware: route.middleware!);
+        return RouteHttp(fullPath,
+            middleware: route.middleware!,
+            acceptedMethods: route.acceptedMethods);
       }
       return Route(fullPath,
           middleware: route.middleware,

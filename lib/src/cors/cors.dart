@@ -53,16 +53,23 @@ final class CorsConfig {
   MiddlewareNulable createMiddleware() {
     return (HttpRequest request) async {
       if (request.method == 'OPTIONS') {
-        final response = request.response;
-        _applyCorsHeaders(response);
-        response
-          ..statusCode = HttpStatus.noContent
-          ..contentLength = 0;
-        response.close();
-        return const Response.noContent(body: '');
+        return Response.noContent(
+          body: '',
+          headers: _corsHeaders(),
+        );
       }
       _applyCorsHeaders(request.response);
       return null;
+    };
+  }
+
+  Map<String, String> _corsHeaders() {
+    return {
+      'Access-Control-Allow-Origin': allowOrigins.join(', '),
+      'Access-Control-Allow-Methods': allowMethods.join(', '),
+      'Access-Control-Allow-Headers': allowHeaders.join(', '),
+      'Access-Control-Max-Age': maxAge.toString(),
+      if (allowCredentials) 'Access-Control-Allow-Credentials': 'true',
     };
   }
 

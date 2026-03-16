@@ -6,7 +6,7 @@ import 'route_base.dart';
 /// HTTP route class, already equipped with constructors to handle [Get], [Post], [Put], [Delete]
 /// [Patch], [Head], [Options], [Trace] but it's possible to customize and make your route work with more than one method.
 final class RouteHttp extends Route {
-  RouteHttp(super.name, {required super.middleware});
+  RouteHttp(super.name, {required super.middleware, super.acceptedMethods});
 
   RouteHttp.get(super.name,
       {required super.middleware,
