@@ -1,48 +1,67 @@
 // @author viniciusddrft
 //
-// Complete example showcasing all Sparky features.
+// Sparky 2.1.0 — Example
+//
+// Each section below demonstrates one feature independently,
+// following the same order as the README.
 // Run: dart run example/sparky_example.dart
 
 import 'dart:io';
-import 'dart:math';
 import 'package:sparky/sparky.dart';
 
 void main() async {
-  // ── JWT Authentication ──────────────────────────────────────────────
-  const authJwt = AuthJwt(secretKey: 'my-super-secret-key');
-
-  // Auth guard reusable across routes and groups
-  Future<Response?> authGuard(HttpRequest request) async {
-    final token = request.headers.value('Authorization');
-    if (token != null && authJwt.verifyToken(token)) {
-      final payload = authJwt.decodePayload(token);
-      print('Authenticated user: ${payload?['username']}');
-      return null;
-    }
-    return const Response.unauthorized(
-      body: {'error': 'Missing or invalid token'},
-    );
-  }
-
-  // ── Public routes (no auth) ─────────────────────────────────────────
-  final login = RouteHttp.post('/login', middleware: (request) async {
-    final data = await request.getJsonBody();
-    final token = authJwt.generateToken(
-      {'username': data['user'] ?? '', 'role': data['role'] ?? 'user'},
-      expiresIn: const Duration(hours: 2),
-    );
-    return Response.ok(body: {'token': token});
+  // ─────────────────────────────────────────────────────────────────────
+  // 1. Simple route
+  // ─────────────────────────────────────────────────────────────────────
+  final hello = RouteHttp.get('/hello', middleware: (request) async {
+    return const Response.ok(body: 'Hello World');
   });
 
-  final healthCheck = RouteHttp.get('/health',
-      middleware: (r) async => const Response.ok(body: {'status': 'ok'}));
+  // ─────────────────────────────────────────────────────────────────────
+  // 2. Dynamic routes with path parameters
+  // ─────────────────────────────────────────────────────────────────────
+  final userById = RouteHttp.get('/users/:id', middleware: (request) async {
+    final userId = request.pathParams['id'];
+    return Response.ok(body: {'userId': userId, 'name': 'User $userId'});
+  });
 
-  // ── Request body validation ─────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 3. Route group with prefix
+  // ─────────────────────────────────────────────────────────────────────
+  final apiRoutes = RouteGroup('/api/v1', routes: [
+    RouteHttp.get('/status',
+        middleware: (r) async => const Response.ok(body: {'status': 'ok'})),
+    RouteHttp.get('/items',
+        middleware: (r) async => const Response.ok(body: {
+              'items': ['a', 'b', 'c']
+            })),
+  ]);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 4. JSON serialization (Map/List auto-serialized)
+  // ─────────────────────────────────────────────────────────────────────
+  final data = RouteHttp.get('/data', middleware: (request) async {
+    return const Response.ok(body: {
+      'message': 'hello',
+      'items': [1, 2, 3]
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 5. Body parsing (JSON and form-data)
+  // ─────────────────────────────────────────────────────────────────────
+  final echo = RouteHttp.post('/echo', middleware: (request) async {
+    final json = await request.getJsonBody();
+    return Response.ok(body: {'echo': json});
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 6. Request body validation
+  // ─────────────────────────────────────────────────────────────────────
   final registerSchema = Validator({
-    'name': [isRequired, isString, minLength(3), maxLength(50)],
+    'name': [isRequired, isString, minLength(3)],
     'email': [isRequired, isString, isEmail],
     'age': [isRequired, isNum, min(18)],
-    'role': [isString, oneOf(['admin', 'user', 'editor'])],
   });
 
   final register = RouteHttp.post('/register', middleware: (request) async {
@@ -54,54 +73,81 @@ void main() async {
     return Response.created(body: {'ok': true, 'user': body['name']});
   });
 
-  // ── Dynamic routes with path parameters ─────────────────────────────
-  final userById =
-      RouteHttp.get('/users/:id', middleware: (request) async {
-    final userId = request.pathParams['id'];
-    return Response.ok(body: {'userId': userId, 'name': 'User $userId'});
+  // ─────────────────────────────────────────────────────────────────────
+  // 7. Custom headers
+  // ─────────────────────────────────────────────────────────────────────
+  final download = RouteHttp.get('/download', middleware: (request) async {
+    return const Response.ok(
+      body: 'file content',
+      headers: {'X-Custom-Header': 'value', 'Cache-Control': 'no-cache'},
+    );
   });
 
-  final productRoute = RouteHttp.get('/products/:category/:itemId',
-      middleware: (request) async {
-    return Response.ok(body: {
-      'category': request.pathParams['category'],
-      'itemId': request.pathParams['itemId'],
-    });
+  // ─────────────────────────────────────────────────────────────────────
+  // 8. JWT authentication with expiration
+  // ─────────────────────────────────────────────────────────────────────
+  const authJwt = AuthJwt(secretKey: 'my-secret-key');
+
+  final login = RouteHttp.post('/login', middleware: (request) async {
+    final body = await request.getJsonBody();
+    final token = authJwt.generateToken(
+      {'username': body['user'] ?? ''},
+      expiresIn: const Duration(hours: 2),
+    );
+    return Response.ok(body: {'token': token});
   });
 
-  // ── Route with guards ───────────────────────────────────────────────
-  final adminOnly = RouteHttp.get('/admin/dashboard',
-      middleware: (r) async =>
-          const Response.ok(body: {'dashboard': 'admin data'}),
+  // ─────────────────────────────────────────────────────────────────────
+  // 9. Guards (per-route auth middleware)
+  // ─────────────────────────────────────────────────────────────────────
+  Future<Response?> authGuard(HttpRequest request) async {
+    final token = request.headers.value('Authorization');
+    if (token != null && authJwt.verifyToken(token)) return null;
+    return const Response.unauthorized(body: {'error': 'Unauthorized'});
+  }
+
+  final admin = RouteHttp.get('/admin',
+      middleware: (r) async => const Response.ok(body: {'admin': true}),
       guards: [authGuard]);
 
-  // ── Route groups with shared guards ─────────────────────────────────
-  final apiV1 = RouteGroup('/api/v1', guards: [authGuard], routes: [
-    RouteHttp.get('/status',
-        middleware: (r) async => const Response.ok(body: {'status': 'ok'})),
-    RouteHttp.get('/items',
-        middleware: (r) async =>
-            const Response.ok(body: {'items': ['a', 'b', 'c']})),
-  ]);
+  // ─────────────────────────────────────────────────────────────────────
+  // 10. WebSocket
+  // ─────────────────────────────────────────────────────────────────────
+  final websocket = RouteWebSocket(
+    '/ws',
+    middlewareWebSocket: (WebSocket socket) async {
+      socket.add('Hello from Sparky!');
+      socket.listen(
+        (msg) => socket.add('Echo: $msg'),
+        onDone: () => socket.close(),
+      );
+    },
+  );
 
-  // ── Content negotiation ─────────────────────────────────────────────
-  final negotiate = RouteHttp.get('/data', middleware: (request) async {
+  // ─────────────────────────────────────────────────────────────────────
+  // 11. Class-based routes
+  // ─────────────────────────────────────────────────────────────────────
+  final testRoute = ExampleRoute();
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 12. Content negotiation
+  // ─────────────────────────────────────────────────────────────────────
+  final negotiate = RouteHttp.get('/negotiate', middleware: (request) async {
     final preferred =
         request.preferredType(const ['application/json', 'text/html']);
     if (preferred == 'text/html') {
-      return Response.ok(
-          body: '<h1>Hello</h1>', contentType: ContentType.html);
+      return Response.ok(body: '<h1>ok</h1>', contentType: ContentType.html);
     }
-    return Response.ok(
-        body: {'message': 'hello'}, contentType: ContentType.json);
+    return Response.ok(body: {'ok': true}, contentType: ContentType.json);
   });
 
-  // ── Cookies ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 13. Cookies
+  // ─────────────────────────────────────────────────────────────────────
   final setCookie = RouteHttp.get('/set-cookie', middleware: (request) async {
     final cookie = Cookie('session', 'abc123')
       ..httpOnly = true
-      ..secure = true
-      ..path = '/';
+      ..secure = true;
     return Response.ok(body: {'ok': true}, cookies: [cookie]);
   });
 
@@ -110,133 +156,79 @@ void main() async {
     return Response.ok(body: {'session': session?.value ?? 'none'});
   });
 
-  // ── Random (cache demonstration) ────────────────────────────────────
-  final random = RouteHttp.get('/random', middleware: (request) async {
-    final value = Random().nextInt(100);
-    return Response.ok(body: {'value': value});
-  });
-
-  // ── Body parsing ────────────────────────────────────────────────────
-  final echo = RouteHttp.post('/echo', middleware: (request) async {
-    final body = await request.getJsonBody();
-    return Response.ok(body: {'echo': body});
-  });
-
-  final formEndpoint = RouteHttp.post('/form', middleware: (request) async {
-    final form = await request.getFormData();
-    return Response.ok(body: {'received': form});
-  });
-
-  // ── WebSocket ───────────────────────────────────────────────────────
-  final websocket = RouteWebSocket(
-    '/ws',
-    middlewareWebSocket: (WebSocket socket) async {
-      socket.add('Hello from Sparky!');
-      socket.listen(
-        (data) {
-          socket.add('Echo: $data');
-        },
-        onDone: () => socket.close(),
-      );
-    },
-  );
-
-  // ── Class-based routes ──────────────────────────────────────────────
-  final classRoute = RouteTest();
-  final classSocket = RouteSocket();
-
-  // ── CORS configuration ──────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 14. CORS (multi-origin, credentials)
+  // ─────────────────────────────────────────────────────────────────────
   const cors = CorsConfig(
     allowOrigins: ['https://myapp.com', 'https://admin.myapp.com'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowCredentials: true,
   );
 
-  // ── Rate limiter ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 15. Rate limiting
+  // ─────────────────────────────────────────────────────────────────────
   final limiter = RateLimiter(
     maxRequests: 100,
     window: const Duration(minutes: 5),
   );
 
-  // ── Static files ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 16. Static files
+  // ─────────────────────────────────────────────────────────────────────
   const staticFiles = StaticFiles(
     urlPath: '/public',
     directory: './static',
-    maxFileSize: 5 * 1024 * 1024, // 5 MB
   );
 
-  // ── Server setup ────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // 17. Start the server with all features
+  // ─────────────────────────────────────────────────────────────────────
   final server = Sparky.server(
     routes: [
-      // Public routes
-      login,
-      register,
-      healthCheck,
-      // Dynamic routes
+      hello,
       userById,
-      productRoute,
-      // Guarded route
-      adminOnly,
-      // Content negotiation & cookies
+      data,
+      echo,
+      register,
+      download,
+      login,
+      admin,
+      websocket,
+      testRoute,
       negotiate,
       setCookie,
       readCookie,
-      // Cache demo
-      random,
-      // Body parsing
-      echo,
-      formEndpoint,
-      // WebSocket
-      websocket,
-      // Class-based
-      classRoute,
-      classSocket,
-      // Grouped routes (flatten expands to /api/v1/status, /api/v1/items)
-      ...apiV1.flatten(),
+      ...apiRoutes.flatten(),
     ],
     port: 3000,
-    ip: '127.0.0.1',
-    // Logging
-    logConfig: LogConfig.showLogs,
-    logType: LogType.errors,
-    logFilePath: 'server.log',
-    // Security
-    maxBodySize: 10 * 1024 * 1024, // 10 MB
-    requestTimeout: const Duration(seconds: 30),
-    // Performance
-    enableGzip: true,
-    gzipMinLength: 1024, // only gzip responses >= 1 KB
-    // Cache
-    cacheTtl: const Duration(seconds: 60),
-    cacheMaxEntries: 500,
-    // Pipelines
+    // Pipelines — CORS, rate limit, static files
     pipelineBefore: Pipeline()
       ..add(cors.createMiddleware())
       ..add(limiter.createMiddleware())
-      ..add(staticFiles.createMiddleware())
-      ..add((request) async {
-        // Invalidate cache for /random on every request
-        if (request.uri.path == random.name) {
-          random.onUpdate();
-        }
-        return null;
-      }),
-    pipelineAfter: Pipeline()
-      ..add((request) async {
-        print('Request completed: ${request.method} ${request.uri.path}');
-        return null;
-      }),
-    // Uncomment for HTTPS:
+      ..add(staticFiles.createMiddleware()),
+    // Logging
+    logConfig: LogConfig.showLogs,
+    // Security
+    maxBodySize: 10 * 1024 * 1024, // 10 MB
+    requestTimeout: const Duration(seconds: 30),
+    // Gzip
+    enableGzip: true,
+    gzipMinLength: 1024,
+    // Cache
+    cacheTtl: const Duration(seconds: 60),
+    cacheMaxEntries: 500,
+    // HTTPS — uncomment with your certificate:
     // securityContext: SecurityContext()
     //   ..useCertificateChain('cert.pem')
     //   ..usePrivateKey('key.pem'),
   );
 
+  // ─────────────────────────────────────────────────────────────────────
+  // 18. Graceful shutdown
+  // ─────────────────────────────────────────────────────────────────────
   await server.ready;
   print('Sparky running on http://127.0.0.1:${server.actualPort}');
-  print('Press Ctrl+C to stop.');
 
-  // Graceful shutdown on SIGINT
   ProcessSignal.sigint.watch().listen((_) async {
     print('\nShutting down...');
     await server.close();
@@ -244,23 +236,12 @@ void main() async {
   });
 }
 
-// ── Class-based route examples ──────────────────────────────────────────
-
-final class RouteTest extends Route {
-  RouteTest()
+// ─────────────────────────────────────────────────────────────────────────
+// 11. Class-based route example
+// ─────────────────────────────────────────────────────────────────────────
+final class ExampleRoute extends Route {
+  ExampleRoute()
       : super('/test', middleware: (request) async {
           return const Response.ok(body: 'test');
-        }, acceptedMethods: [
-          AcceptedMethods.get,
-          AcceptedMethods.post,
-        ]);
-}
-
-final class RouteSocket extends Route {
-  RouteSocket()
-      : super('/socket', middlewareWebSocket: (WebSocket webSocket) async {
-          webSocket.listen(print, onDone: () {
-            webSocket.close();
-          });
-        });
+        }, acceptedMethods: [AcceptedMethods.get, AcceptedMethods.post]);
 }
