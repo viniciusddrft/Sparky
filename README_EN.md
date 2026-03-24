@@ -18,6 +18,12 @@ Sparky is a Dart package for building REST APIs in a simple way, with support fo
 - Custom headers in Response
 - Graceful shutdown
 - JSON body, form-data and URL-encoded parsing
+- Request body size limit (`maxBodySize`)
+- Per-request timeout (`requestTimeout`)
+- Gzip compression (`enableGzip`, `gzipMinLength`)
+- Built-in rate limiting
+- Static file serving with `StaticFiles`
+- Content negotiation and cookie helpers
 
 ## How to Use
 
@@ -265,6 +271,105 @@ Sparky.server(
       random.onUpdate(); // invalidates cache, runs route code
       return null;
     }),
+);
+```
+
+You can also configure TTL and max cache entries:
+
+```dart
+Sparky.server(
+  routes: [...],
+  cacheTtl: const Duration(seconds: 30),
+  cacheMaxEntries: 500,
+);
+```
+
+### Body size and timeout
+
+```dart
+Sparky.server(
+  routes: [...],
+  maxBodySize: 10 * 1024 * 1024, // 10 MB
+  requestTimeout: const Duration(seconds: 10),
+);
+```
+
+### Serving static files
+
+```dart
+Sparky.server(
+  routes: [...],
+  pipelineBefore: Pipeline()
+    ..add(
+      StaticFiles(
+        urlPath: '/public',
+        directory: './static',
+        maxFileSize: 5 * 1024 * 1024, // optional
+      ).createMiddleware(),
+    ),
+);
+```
+
+### Gzip
+
+```dart
+Sparky.server(
+  routes: [...],
+  enableGzip: true,
+  gzipMinLength: 1024,
+);
+```
+
+### Rate limiting
+
+```dart
+final limiter = RateLimiter(
+  maxRequests: 100,
+  window: const Duration(minutes: 1),
+  trustProxyHeaders: true, // only behind a trusted proxy
+);
+
+Sparky.server(
+  routes: [...],
+  pipelineBefore: Pipeline()..add(limiter.createMiddleware()),
+);
+```
+
+### Content negotiation
+
+```dart
+RouteHttp.get('/data', middleware: (request) async {
+  final preferred = request.preferredType(
+    const ['application/json', 'text/html'],
+  );
+  if (preferred == 'text/html') {
+    return Response.ok(body: '<h1>ok</h1>', contentType: ContentType.html);
+  }
+  return Response.ok(body: {'ok': true}, contentType: ContentType.json);
+});
+```
+
+### Cookies
+
+```dart
+RouteHttp.get('/set-cookie', middleware: (request) async {
+  final cookie = Cookie('session', 'token')
+    ..httpOnly = true
+    ..secure = true;
+  return Response.ok(body: {'ok': true}, cookies: [cookie]);
+});
+```
+
+### HTTPS/TLS
+
+```dart
+final context = SecurityContext()
+  ..useCertificateChain('cert.pem')
+  ..usePrivateKey('key.pem');
+
+Sparky.server(
+  routes: [...],
+  securityContext: context,
 );
 ```
 

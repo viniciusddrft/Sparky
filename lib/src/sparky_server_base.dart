@@ -18,7 +18,17 @@ base class SparkyBase {
       this.logType = LogType.all,
       this.logFilePath = 'logs.txt',
       this.pipelineAfter,
-      this.pipelineBefore});
+      this.pipelineBefore,
+      this.securityContext,
+      this.requestTimeout,
+      this.maxBodySize,
+      this.enableGzip = false,
+      this.gzipMinLength = 0,
+      Duration? cacheTtl,
+      int? cacheMaxEntries})
+      : cacheManager = _CacheManager()
+          ..ttl = cacheTtl
+          ..maxEntries = cacheMaxEntries;
   final List<Route> routes;
   final int port;
   final String ip, logFilePath;
@@ -26,7 +36,13 @@ base class SparkyBase {
   final LogConfig logConfig;
   final LogType logType;
   final Pipeline? pipelineBefore, pipelineAfter;
-  final cacheManager = _CacheManager();
+  final SecurityContext? securityContext;
+  final Duration? requestTimeout;
+  final int? maxBodySize;
+  final bool enableGzip;
+  final int gzipMinLength;
+  // ignore: library_private_types_in_public_api
+  final _CacheManager cacheManager;
 
   Future<Response?> runPipeline(Pipeline? pipeline, HttpRequest request) async {
     if (pipeline != null && pipeline.mids.isNotEmpty) {

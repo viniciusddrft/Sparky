@@ -10,6 +10,14 @@ base class Route {
   final Middleware? middleware;
   final MiddlewareWebSocket? middlewareWebSocket;
   final List<AcceptedMethods>? acceptedMethods;
+
+  /// Middleware guards that run before the route handler.
+  ///
+  /// Each guard is a [MiddlewareNulable]. If any guard returns a [Response],
+  /// the pipeline short-circuits and that response is sent to the client.
+  /// If all guards return `null`, the route handler executes normally.
+  final List<MiddlewareNulable> guards;
+
   int _versionCache = 0;
 
   int get versionCache => _versionCache;
@@ -27,6 +35,7 @@ base class Route {
   Route(this.name,
       {this.middleware,
       this.middlewareWebSocket,
+      this.guards = const [],
       this.acceptedMethods = const [
         AcceptedMethods.get,
         AcceptedMethods.post,

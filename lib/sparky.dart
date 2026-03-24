@@ -15,3 +15,6 @@ export 'src/sparky_server_base.dart';
 export 'src/extensions/http_request.dart';
 export 'src/cors/cors.dart';
 export 'src/errors/sparky_error.dart';
+export 'src/validator/validator.dart';
+export 'src/rate_limiter/rate_limiter.dart';
+export 'src/static_files/static_files.dart';

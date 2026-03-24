@@ -27,7 +27,8 @@ base mixin Logs on SparkyBase {
       _file = File(logFilePath).openWrite(mode: FileMode.append);
     }
 
-    final message = '-- info --> Listen on $ip:$port';
+    final protocol = securityContext != null ? 'https' : 'http';
+    final message = '-- info --> Listen on $protocol://$ip:$port';
     if (_shouldShow) print(message);
     if (_shouldWrite) _saveLogs(message);
   }

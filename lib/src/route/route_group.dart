@@ -1,5 +1,6 @@
 // Author: viniciusddrft
 
+import '../types/sparky_types.dart';
 import 'route_base.dart';
 import 'route_http.dart';
 
@@ -20,21 +21,34 @@ final class RouteGroup {
   final String prefix;
   final List<Route> _routes;
 
-  RouteGroup(this.prefix, {required List<Route> routes}) : _routes = routes;
+  /// Guards that apply to all routes in this group.
+  ///
+  /// Group guards run before individual route guards.
+  final List<MiddlewareNulable> guards;
+
+  RouteGroup(this.prefix,
+      {required List<Route> routes, this.guards = const []})
+      : _routes = routes;
 
   /// Expands this group into individual routes with the prefix prepended.
+  ///
+  /// Group-level [guards] are prepended to each route's own guards,
+  /// so they run first during request handling.
   List<Route> flatten() {
     return _routes.map((route) {
       final fullPath = '$prefix${route.name}';
+      final combinedGuards = [...guards, ...route.guards];
       if (route is RouteHttp) {
         return RouteHttp(fullPath,
             middleware: route.middleware!,
-            acceptedMethods: route.acceptedMethods);
+            acceptedMethods: route.acceptedMethods,
+            guards: combinedGuards);
       }
       return Route(fullPath,
           middleware: route.middleware,
           middlewareWebSocket: route.middlewareWebSocket,
-          acceptedMethods: route.acceptedMethods);
+          acceptedMethods: route.acceptedMethods,
+          guards: combinedGuards);
     }).toList();
   }
 }

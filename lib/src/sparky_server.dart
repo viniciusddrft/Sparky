@@ -24,6 +24,13 @@ base class Sparky extends SparkyBase with Logs {
     super.logFilePath = 'logs.txt',
     super.pipelineBefore,
     super.pipelineAfter,
+    super.securityContext,
+    super.requestTimeout,
+    super.maxBodySize,
+    super.enableGzip = false,
+    super.gzipMinLength = 0,
+    super.cacheTtl,
+    super.cacheMaxEntries,
   }) {
     _init();
   }
@@ -74,59 +81,156 @@ base class Sparky extends SparkyBase with Logs {
     return null;
   }
 
+  bool _isCacheableMethod(String method) =>
+      method == 'GET' || method == 'HEAD';
+
   Future<void> _start() async {
-    _server = await HttpServer.bind(ip, port);
+    _server = securityContext != null
+        ? await HttpServer.bindSecure(ip, port, securityContext!)
+        : await HttpServer.bind(ip, port);
 
     _openServerLog();
 
     _subscription = _server.listen(
       (HttpRequest request) async {
         try {
-          final response = request.response;
-          final path = request.uri.path;
-
-          final Response? pipelineBeforeResponse =
-              await runPipeline(pipelineBefore, request);
-
-          final route = _resolveRoute(path, request);
-
-          if (WebSocketTransformer.isUpgradeRequest(request) && route != null) {
-            final websocket = await WebSocketTransformer.upgrade(request);
-            route.middlewareWebSocket!(websocket);
-            await runPipeline(pipelineAfter, request);
-          } else {
-            final Response routeResponse;
-
-            if (pipelineBeforeResponse == null) {
-              if (route != null &&
-                  !route.isDynamic &&
-                  cacheManager.verifyVersionCache(route, request.method)) {
-                routeResponse = cacheManager.getCache(route, request.method);
-              } else {
-                routeResponse = await _internalHandler(request, route);
-                if (route != null && !route.isDynamic) {
-                  cacheManager.saveCache(route, request.method, routeResponse);
-                }
-              }
-            } else {
-              routeResponse = pipelineBeforeResponse;
+          var upgradedToWebSocket = false;
+          if (maxBodySize != null) {
+            request.setMaxBodySize(maxBodySize!);
+            final contentLength = request.contentLength;
+            if (contentLength > maxBodySize!) {
+              final response = request.response;
+              response
+                ..statusCode = HttpStatus.requestEntityTooLarge
+                ..headers.contentType = ContentType.json
+                ..write(
+                    '{"errorCode":"413","message":"Request Entity Too Large"}');
+              await response.close();
+              return;
             }
-
-            response
-              ..headers.contentType =
-                  routeResponse.contentType ?? ContentType.json
-              ..statusCode = routeResponse.status;
-            if (routeResponse.headers != null) {
-              routeResponse.headers!.forEach((key, value) {
-                response.headers.set(key, value);
-              });
+            if (contentLength < 0 &&
+                request.method != 'GET' &&
+                request.method != 'HEAD' &&
+                request.method != 'OPTIONS') {
+              await request.preloadBodyWithLimit(maxBodySize!);
             }
-            response.write(routeResponse.body);
-            response.close();
-
-            await runPipeline(pipelineAfter, request);
-            _requestServerLog(request, routeResponse);
           }
+
+          Future<Response> resolveResponse() async {
+            final path = request.uri.path;
+
+            final Response? pipelineBeforeResponse =
+                await runPipeline(pipelineBefore, request);
+
+            final route = _resolveRoute(path, request);
+
+            if (WebSocketTransformer.isUpgradeRequest(request) &&
+                route != null) {
+              final websocket = await WebSocketTransformer.upgrade(request);
+              route.middlewareWebSocket!(websocket);
+              upgradedToWebSocket = true;
+              return const Response.ok(body: '');
+            } else {
+              final Response routeResponse;
+
+              if (pipelineBeforeResponse == null) {
+                if (route != null &&
+                    !route.isDynamic &&
+                    _isCacheableMethod(request.method) &&
+                    cacheManager.verifyVersionCache(route, request.method)) {
+                  routeResponse = cacheManager.getCache(route, request.method);
+                } else {
+                  routeResponse = await _internalHandler(request, route);
+                  if (route != null &&
+                      !route.isDynamic &&
+                      _isCacheableMethod(request.method) &&
+                      !routeResponse.isStream) {
+                    cacheManager.saveCache(
+                        route, request.method, routeResponse);
+                  }
+                }
+              } else {
+                routeResponse = pipelineBeforeResponse;
+              }
+
+              return routeResponse;
+            }
+          }
+
+          final Response routeResponse;
+          if (requestTimeout != null) {
+            final handlerFuture = resolveResponse();
+            routeResponse = await handlerFuture.timeout(requestTimeout!,
+                onTimeout: () {
+              request.markCancelled();
+              handlerFuture.ignore();
+              throw TimeoutException(
+                  'Request timeout', requestTimeout);
+            });
+          } else {
+            routeResponse = await resolveResponse();
+          }
+
+          if (upgradedToWebSocket) {
+            await runPipeline(pipelineAfter, request);
+            return;
+          }
+
+          final response = request.response;
+          response
+            ..headers.contentType = routeResponse.contentType ?? ContentType.json
+            ..statusCode = routeResponse.status;
+          if (routeResponse.headers != null) {
+            routeResponse.headers!.forEach((key, value) {
+              response.headers.set(key, value);
+            });
+          }
+          if (routeResponse.cookies != null) {
+            response.cookies.addAll(routeResponse.cookies!);
+          }
+
+          if (routeResponse.isStream) {
+            await response.addStream(routeResponse.bodyStream!);
+          } else {
+            final responseBytes = routeResponse.bodyBytes;
+            final canGzip = enableGzip &&
+                !routeResponse.isBinary &&
+                responseBytes.length >= gzipMinLength &&
+                request.headers[HttpHeaders.acceptEncodingHeader]
+                        ?.any((e) => e.contains('gzip')) ==
+                    true;
+            if (canGzip) {
+              response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+              response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+              response.add(gzip.encode(responseBytes));
+            } else {
+              response.add(responseBytes);
+            }
+          }
+          await response.close();
+
+          await runPipeline(pipelineAfter, request);
+          _requestServerLog(request, routeResponse);
+        } on BodyTooLargeException {
+          _errorServerLog('Request entity too large: ${request.uri.path}');
+          try {
+            final response = request.response;
+            response
+              ..statusCode = HttpStatus.requestEntityTooLarge
+              ..headers.contentType = ContentType.json
+              ..write('{"errorCode":"413","message":"Request Entity Too Large"}');
+            await response.close();
+          } catch (_) {}
+        } on TimeoutException {
+          _errorServerLog('Request timeout: ${request.uri.path}');
+          try {
+            final response = request.response;
+            response
+              ..statusCode = HttpStatus.requestTimeout
+              ..headers.contentType = ContentType.json
+              ..write('{"errorCode":"408","message":"Request Timeout"}');
+            await response.close();
+          } catch (_) {}
         } catch (e) {
           _errorServerLog(e);
           try {
@@ -135,7 +239,7 @@ base class Sparky extends SparkyBase with Logs {
               ..statusCode = HttpStatus.internalServerError
               ..headers.contentType = ContentType.json
               ..write('{"errorCode":"500","message":"Internal Server Error"}');
-            response.close();
+            await response.close();
           } catch (_) {}
         }
       },
@@ -155,6 +259,10 @@ base class Sparky extends SparkyBase with Logs {
       if (acceptedMethods != null &&
           acceptedMethods.contains(request.method) &&
           route.middleware != null) {
+        for (final guard in route.guards) {
+          final guardResponse = await guard(request);
+          if (guardResponse != null) return guardResponse;
+        }
         return route.middleware!(request);
       }
       return const Response.methodNotAllowed(
