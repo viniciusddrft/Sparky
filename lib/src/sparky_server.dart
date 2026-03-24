@@ -60,6 +60,12 @@ base class Sparky extends SparkyBase with Logs {
   /// Returns the future that completes when the server is bound and listening.
   Future<void> get ready => _startFuture;
 
+  /// The actual port the server is listening on.
+  ///
+  /// Useful when binding with `port: 0` (OS-assigned port).
+  /// Must be called after [ready] completes.
+  int get actualPort => _server.port;
+
   bool _checkRepeatedRoutes(Iterable<String> routes) {
     final checkedElements = <String>{};
     return routes.any((name) => !checkedElements.add(name));
@@ -134,19 +140,21 @@ base class Sparky extends SparkyBase with Logs {
               final Response routeResponse;
 
               if (pipelineBeforeResponse == null) {
+                // Cache only applies to static routes (no :param segments)
+                // and idempotent methods (GET, HEAD). Dynamic routes and
+                // stream responses are intentionally excluded.
                 if (route != null &&
                     !route.isDynamic &&
                     _isCacheableMethod(request.method) &&
-                    cacheManager.verifyVersionCache(route, request.method)) {
-                  routeResponse = cacheManager.getCache(route, request.method);
+                    isCached(route, request.method)) {
+                  routeResponse = getCachedResponse(route, request.method);
                 } else {
                   routeResponse = await _internalHandler(request, route);
                   if (route != null &&
                       !route.isDynamic &&
                       _isCacheableMethod(request.method) &&
                       !routeResponse.isStream) {
-                    cacheManager.saveCache(
-                        route, request.method, routeResponse);
+                    cacheResponse(route, request.method, routeResponse);
                   }
                 }
               } else {
@@ -190,7 +198,21 @@ base class Sparky extends SparkyBase with Logs {
           }
 
           if (routeResponse.isStream) {
-            await response.addStream(routeResponse.bodyStream!);
+            final stream = routeResponse.bodyStream!;
+            final canGzipStream = enableGzip &&
+                _isCompressibleContentType(routeResponse.contentType) &&
+                request.headers[HttpHeaders.acceptEncodingHeader]
+                        ?.any((e) => e.contains('gzip')) ==
+                    true;
+            if (canGzipStream) {
+              response.headers.chunkedTransferEncoding = true;
+              response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+              response.headers
+                  .set(HttpHeaders.contentEncodingHeader, 'gzip');
+              await response.addStream(stream.transform(gzip.encoder));
+            } else {
+              await response.addStream(stream);
+            }
           } else {
             final responseBytes = routeResponse.bodyBytes;
             final canGzip = enableGzip &&
@@ -283,4 +305,17 @@ base class Sparky extends SparkyBase with Logs {
     await _file?.flush();
     await _file?.close();
   }
+}
+
+bool _isCompressibleContentType(ContentType? ct) {
+  if (ct == null) return true;
+  final primary = ct.primaryType;
+  if (primary == 'text') return true;
+  if (primary == 'application') {
+    return ct.subType == 'json' ||
+        ct.subType == 'javascript' ||
+        ct.subType == 'xml' ||
+        ct.subType == 'svg+xml';
+  }
+  return false;
 }

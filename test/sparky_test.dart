@@ -99,6 +99,11 @@ void main() {
       expect(token.split('.').length, 3);
     });
 
+    test('token has no base64url padding characters (RFC 7519)', () {
+      final token = jwt.generateToken({'user': 'admin'});
+      expect(token.contains('='), isFalse);
+    });
+
     test('verifies a valid token', () {
       final token = jwt.generateToken({'user': 'admin'});
       expect(jwt.verifyToken(token), isTrue);
@@ -273,7 +278,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9000 + DateTime.now().millisecondsSinceEpoch % 1000;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/hello',
@@ -291,10 +295,11 @@ void main() {
                     '{"category":"${r.pathParams['category']}","itemId":"${r.pathParams['itemId']}"}');
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -559,18 +564,18 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9200 + DateTime.now().millisecondsSinceEpoch % 800;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/data',
               middleware: (r) async =>
                   const Response.ok(body: '{"msg":"hello world"}')),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         enableGzip: true,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -608,7 +613,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9300 + DateTime.now().millisecondsSinceEpoch % 700;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/small',
@@ -618,12 +622,13 @@ void main() {
             return Response.ok(body: largeBody);
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         enableGzip: true,
         gzipMinLength: 1024,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -660,7 +665,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9400 + DateTime.now().millisecondsSinceEpoch % 600;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/negotiation', middleware: (r) async {
@@ -690,10 +694,11 @@ void main() {
             );
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -745,13 +750,12 @@ void main() {
       await File('${tempDir.path}/app.js').writeAsString('console.log("ok");');
       await File('${tempDir.path}/logo.png').writeAsBytes([0, 1, 2, 3, 4]);
 
-      port = 9600 + DateTime.now().millisecondsSinceEpoch % 300;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/api/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         pipelineBefore: Pipeline()
           ..add(
@@ -762,6 +766,7 @@ void main() {
           ),
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -893,7 +898,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9700 + DateTime.now().millisecondsSinceEpoch % 200;
       server = Sparky.server(
         routes: [
           RouteHttp.post('/echo', middleware: (r) async {
@@ -901,11 +905,12 @@ void main() {
             return Response.ok(body: {'size': body.length});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         maxBodySize: 10,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -953,7 +958,6 @@ void main() {
 
     test('respects cacheTtl for static routes', () async {
       var hits = 0;
-      port = 9710 + DateTime.now().millisecondsSinceEpoch % 180;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/cached', middleware: (r) async {
@@ -961,11 +965,12 @@ void main() {
             return Response.ok(body: {'hits': hits});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         cacheTtl: const Duration(milliseconds: 80),
       );
       await server.ready;
+      port = server.actualPort;
 
       final client = HttpClient();
       final req1 = await client.get('localhost', port, '/cached');
@@ -985,7 +990,6 @@ void main() {
         () async {
       var oneHits = 0;
       var twoHits = 0;
-      port = 9720 + DateTime.now().millisecondsSinceEpoch % 160;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/one', middleware: (r) async {
@@ -997,11 +1001,12 @@ void main() {
             return Response.ok(body: {'hits': twoHits});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         cacheMaxEntries: 1,
       );
       await server.ready;
+      port = server.actualPort;
 
       final client = HttpClient();
       var req = await client.get('localhost', port, '/one');
@@ -1020,7 +1025,6 @@ void main() {
 
     test('does not cache non-idempotent methods like POST', () async {
       var hits = 0;
-      port = 9725 + DateTime.now().millisecondsSinceEpoch % 150;
       server = Sparky.server(
         routes: [
           RouteHttp.post('/submit', middleware: (r) async {
@@ -1028,11 +1032,12 @@ void main() {
             return Response.ok(body: {'hits': hits});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         cacheTtl: const Duration(seconds: 10),
       );
       await server.ready;
+      port = server.actualPort;
 
       final client = HttpClient();
       var req = await client.post('localhost', port, '/submit');
@@ -1049,7 +1054,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9730 + DateTime.now().millisecondsSinceEpoch % 150;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/set-cookie', middleware: (r) async {
@@ -1066,10 +1070,11 @@ void main() {
             return Response.ok(body: {'session': value ?? 'none'});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1102,13 +1107,12 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9740 + DateTime.now().millisecondsSinceEpoch % 140;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/limited',
               middleware: (r) async => const Response.ok(body: {'ok': true})),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         pipelineBefore: Pipeline()
           ..add(
@@ -1119,6 +1123,7 @@ void main() {
           ),
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1147,7 +1152,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9750 + DateTime.now().millisecondsSinceEpoch % 130;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/best', middleware: (r) async {
@@ -1157,10 +1161,11 @@ void main() {
             return Response.ok(body: {'preferred': preferred ?? 'none'});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1222,7 +1227,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9760 + DateTime.now().millisecondsSinceEpoch % 120;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/text',
@@ -1232,11 +1236,12 @@ void main() {
               middleware: (r) async =>
                   const Response.ok(body: [0, 1, 2, 3, 4])),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         enableGzip: true,
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1268,7 +1273,6 @@ void main() {
     late int port;
 
     setUp(() async {
-      port = 9770 + DateTime.now().millisecondsSinceEpoch % 110;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/slow', middleware: (r) async {
@@ -1278,11 +1282,12 @@ void main() {
           RouteHttp.get('/fast',
               middleware: (r) async => const Response.ok(body: {'ok': true})),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         requestTimeout: const Duration(milliseconds: 60),
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1308,16 +1313,16 @@ void main() {
 
   group('Graceful shutdown', () {
     test('server stops accepting connections after close', () async {
-      final port = 9500 + DateTime.now().millisecondsSinceEpoch % 500;
       final server = Sparky.server(
         routes: [
           RouteHttp.get('/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
       );
       await server.ready;
+      final port = server.actualPort;
 
       final client = HttpClient();
       final request = await client.get('localhost', port, '/ping');
@@ -1344,7 +1349,6 @@ void main() {
 
     setUp(() async {
       cancelledCompleter = Completer<bool>();
-      port = 9780 + DateTime.now().millisecondsSinceEpoch % 100;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/slow-check', middleware: (r) async {
@@ -1353,11 +1357,12 @@ void main() {
             return const Response.ok(body: {'ok': true});
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         requestTimeout: const Duration(milliseconds: 50),
       );
       await server.ready;
+      port = server.actualPort;
     });
 
     tearDown(() async {
@@ -1387,7 +1392,6 @@ void main() {
 
     test('does not cache stream-based responses', () async {
       var hits = 0;
-      port = 9790 + DateTime.now().millisecondsSinceEpoch % 90;
       server = Sparky.server(
         routes: [
           RouteHttp.get('/stream', middleware: (r) async {
@@ -1399,11 +1403,12 @@ void main() {
             );
           }),
         ],
-        port: port,
+        port: 0,
         logConfig: LogConfig.none,
         cacheTtl: const Duration(seconds: 10),
       );
       await server.ready;
+      port = server.actualPort;
 
       final client = HttpClient();
       var req = await client.get('localhost', port, '/stream');
@@ -1418,6 +1423,231 @@ void main() {
 
       expect(hits, 2);
       client.close();
+    });
+  });
+
+  group('Gzip for stream responses', () {
+    late Sparky server;
+    late int port;
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('sparky-gzip-stream-');
+      await File('${tempDir.path}/page.html')
+          .writeAsString('<html><body>Hello World!</body></html>');
+      await File('${tempDir.path}/logo.png')
+          .writeAsBytes(List.generate(100, (i) => i % 256));
+    });
+
+    tearDown(() async {
+      await server.close();
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('gzip-compresses text static file when client accepts gzip', () async {
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/api',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        enableGzip: true,
+        pipelineBefore: Pipeline()
+          ..add(StaticFiles(
+            urlPath: '/static',
+            directory: tempDir.path,
+          ).createMiddleware()),
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient()..autoUncompress = false;
+      final request = await client.get('localhost', port, '/static/page.html');
+      request.headers.set(HttpHeaders.acceptEncodingHeader, 'gzip');
+      final response = await request.close();
+      final rawBytes = <int>[];
+      await response.forEach(rawBytes.addAll);
+      expect(response.statusCode, 200);
+      expect(response.headers.value(HttpHeaders.contentEncodingHeader), 'gzip');
+      final decompressed = utf8.decode(gzip.decode(rawBytes));
+      expect(decompressed, contains('Hello World!'));
+      client.close();
+    });
+
+    test('does not gzip-compress binary static file', () async {
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/api',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        enableGzip: true,
+        pipelineBefore: Pipeline()
+          ..add(StaticFiles(
+            urlPath: '/static',
+            directory: tempDir.path,
+          ).createMiddleware()),
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient()..autoUncompress = false;
+      final request = await client.get('localhost', port, '/static/logo.png');
+      request.headers.set(HttpHeaders.acceptEncodingHeader, 'gzip');
+      final response = await request.close();
+      expect(response.headers.value(HttpHeaders.contentEncodingHeader), isNull);
+      client.close();
+    });
+  });
+
+  group('CORS origin resolution', () {
+    late Sparky server;
+    late int port;
+
+    test('reflects matching origin from multi-origin config', () async {
+      const cors = CorsConfig(
+        allowOrigins: ['http://foo.com', 'http://bar.com'],
+      );
+      final pipeline = Pipeline()..add(cors.createMiddleware());
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        pipelineBefore: pipeline,
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient();
+      final request = await client.get('localhost', port, '/test');
+      request.headers.set('Origin', 'http://foo.com');
+      final response = await request.close();
+      expect(response.headers.value('Access-Control-Allow-Origin'),
+          'http://foo.com');
+      expect(response.headers.value('Vary'), 'Origin');
+      client.close();
+      await server.close();
+    });
+
+    test('does not set origin header when request origin is not allowed',
+        () async {
+      const cors = CorsConfig(
+        allowOrigins: ['http://foo.com'],
+      );
+      final pipeline = Pipeline()..add(cors.createMiddleware());
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        pipelineBefore: pipeline,
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient();
+      final request = await client.get('localhost', port, '/test');
+      request.headers.set('Origin', 'http://evil.com');
+      final response = await request.close();
+      expect(response.headers.value('Access-Control-Allow-Origin'), isNull);
+      client.close();
+      await server.close();
+    });
+
+    test('wildcard config returns * regardless of origin', () async {
+      const cors = CorsConfig();
+      final pipeline = Pipeline()..add(cors.createMiddleware());
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        pipelineBefore: pipeline,
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient();
+      final request = await client.get('localhost', port, '/test');
+      request.headers.set('Origin', 'http://anything.com');
+      final response = await request.close();
+      expect(response.headers.value('Access-Control-Allow-Origin'), '*');
+      client.close();
+      await server.close();
+    });
+
+    test(
+        'credentials with wildcard reflects request origin instead of * (CORS spec)',
+        () async {
+      const cors = CorsConfig(
+        allowCredentials: true,
+      );
+      final pipeline = Pipeline()..add(cors.createMiddleware());
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        pipelineBefore: pipeline,
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient();
+      final request = await client.get('localhost', port, '/test');
+      request.headers.set('Origin', 'http://myapp.com');
+      final response = await request.close();
+      expect(response.headers.value('Access-Control-Allow-Origin'),
+          'http://myapp.com');
+      expect(
+          response.headers.value('Access-Control-Allow-Credentials'), 'true');
+      expect(response.headers.value('Vary'), 'Origin');
+      client.close();
+      await server.close();
+    });
+
+    test('credentials with wildcard preflight reflects origin', () async {
+      const cors = CorsConfig(
+        allowCredentials: true,
+      );
+      final pipeline = Pipeline()..add(cors.createMiddleware());
+      server = Sparky.server(
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: 0,
+        logConfig: LogConfig.none,
+        pipelineBefore: pipeline,
+      );
+      await server.ready;
+      port = server.actualPort;
+
+      final client = HttpClient();
+      final request = await client.open('OPTIONS', 'localhost', port, '/test');
+      request.headers.set('Origin', 'http://myapp.com');
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.noContent);
+      expect(response.headers.value('Access-Control-Allow-Origin'),
+          'http://myapp.com');
+      expect(
+          response.headers.value('Access-Control-Allow-Credentials'), 'true');
+      expect(response.headers.value('Vary'), 'Origin');
+      client.close();
+      await server.close();
     });
   });
 }

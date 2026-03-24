@@ -29,8 +29,10 @@ final class AuthJwt {
     }
 
     final header = json.encode({'alg': 'HS256', 'typ': 'JWT'});
-    final encodedHeader = base64Url.encode(utf8.encode(header));
-    final encodedPayload = base64Url.encode(utf8.encode(json.encode(claims)));
+    final encodedHeader =
+        base64Url.encode(utf8.encode(header)).replaceAll('=', '');
+    final encodedPayload =
+        base64Url.encode(utf8.encode(json.encode(claims))).replaceAll('=', '');
     final signature = _hmacSha256('$encodedHeader.$encodedPayload', secretKey);
     return '$encodedHeader.$encodedPayload.$signature';
   }
@@ -43,6 +45,18 @@ final class AuthJwt {
   bool verifyToken(String token) {
     final parts = token.split('.');
     if (parts.length != 3) return false;
+
+    // Validate that the header specifies HS256 to prevent algorithm confusion.
+    try {
+      final headerJson = utf8.decode(
+        base64Url.decode(base64Url.normalize(parts[0])),
+      );
+      final header = json.decode(headerJson);
+      if (header is! Map || header['alg'] != 'HS256') return false;
+    } catch (_) {
+      return false;
+    }
+
     final signature = _hmacSha256('${parts[0]}.${parts[1]}', secretKey);
     if (parts[2] != signature) return false;
 
@@ -81,6 +95,7 @@ final class AuthJwt {
   String _hmacSha256(String input, String key) {
     final hmac = Hmac(sha256, utf8.encode(key));
     final digest = hmac.convert(utf8.encode(input));
-    return base64Url.encode(Uint8List.fromList(digest.bytes));
+    return base64Url.encode(Uint8List.fromList(digest.bytes))
+        .replaceAll('=', '');
   }
 }

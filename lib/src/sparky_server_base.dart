@@ -24,9 +24,15 @@ base class SparkyBase {
       this.maxBodySize,
       this.enableGzip = false,
       this.gzipMinLength = 0,
+      /// Time-to-live for cached responses. Only applies to static routes
+      /// (routes without `:param` segments). Dynamic routes are never cached
+      /// because each path parameter combination would need its own entry.
       Duration? cacheTtl,
+
+      /// Maximum number of entries in the response cache. When exceeded,
+      /// the least recently used entry is evicted. Only static routes are cached.
       int? cacheMaxEntries})
-      : cacheManager = _CacheManager()
+      : _cacheManager = _CacheManager()
           ..ttl = cacheTtl
           ..maxEntries = cacheMaxEntries;
   final List<Route> routes;
@@ -41,8 +47,19 @@ base class SparkyBase {
   final int? maxBodySize;
   final bool enableGzip;
   final int gzipMinLength;
-  // ignore: library_private_types_in_public_api
-  final _CacheManager cacheManager;
+  final _CacheManager _cacheManager;
+
+  /// Whether [route] + [method] has a valid cached response.
+  bool isCached(Route route, String method) =>
+      _cacheManager.verifyVersionCache(route, method);
+
+  /// Returns the cached [Response] for [route] + [method].
+  Response getCachedResponse(Route route, String method) =>
+      _cacheManager.getCache(route, method);
+
+  /// Stores [response] in the cache for [route] + [method].
+  void cacheResponse(Route route, String method, Response response) =>
+      _cacheManager.saveCache(route, method, response);
 
   Future<Response?> runPipeline(Pipeline? pipeline, HttpRequest request) async {
     if (pipeline != null && pipeline.mids.isNotEmpty) {

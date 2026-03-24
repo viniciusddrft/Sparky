@@ -20,7 +20,7 @@ import 'package:sparky/src/types/sparky_types.dart';
 final class RateLimiter {
   final int maxRequests;
   final Duration window;
-  final int? maxClients;
+  final int maxClients;
   final bool trustProxyHeaders;
   final String Function(HttpRequest request)? clientIdentifier;
 
@@ -30,7 +30,7 @@ final class RateLimiter {
   RateLimiter({
     this.maxRequests = 60,
     this.window = const Duration(minutes: 1),
-    this.maxClients,
+    this.maxClients = 10000,
     this.trustProxyHeaders = false,
     this.clientIdentifier,
   });
@@ -49,8 +49,8 @@ final class RateLimiter {
       final record = _clients[ip];
 
       if (record == null || now.difference(record.windowStart) >= window) {
-        if (maxClients != null && !_clients.containsKey(ip)) {
-          while (_clients.length >= maxClients!) {
+        if (!_clients.containsKey(ip)) {
+          while (_clients.length >= maxClients) {
             _clients.remove(_clients.keys.first);
           }
         }

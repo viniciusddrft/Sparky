@@ -109,84 +109,9 @@ final class Response {
       : status = HttpStatus.movedPermanently,
         _body = body;
 
-  /// Request AlreadyReported
-  const Response.alreadyReported(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.alreadyReported,
-        _body = body;
-
-  /// Request BadGateway
-  const Response.badGateway(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.badGateway,
-        _body = body;
-
-  /// Request Conflict
-  const Response.conflict(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.conflict,
-        _body = body;
-
-  /// Request ConnectionClosedWithoutResponse
-  const Response.connectionClosedWithoutResponse(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.connectionClosedWithoutResponse,
-        _body = body;
-
-  /// Request Continue_
-  const Response.continue_(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.continue_,
-        _body = body;
-
   /// Request Created
   const Response.created({required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.created,
-        _body = body;
-
-  /// Request ExpectationFailed
-  const Response.expectationFailed(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.expectationFailed,
-        _body = body;
-
-  /// Request FailedDependency
-  const Response.failedDependency(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.failedDependency,
-        _body = body;
-
-  /// Request Found
-  const Response.found({required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.found,
-        _body = body;
-
-  /// Request GatewayTimeout
-  const Response.gatewayTimeout(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.gatewayTimeout,
-        _body = body;
-
-  /// Request Gone
-  const Response.gone({required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.gone,
-        _body = body;
-
-  /// Request HttpVersionNotSupported
-  const Response.httpVersionNotSupported(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.httpVersionNotSupported,
-        _body = body;
-
-  /// Request ImUsed
-  const Response.imUsed({required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.imUsed,
-        _body = body;
-
-  /// Request InsufficientStorage
-  const Response.insufficientStorage(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.insufficientStorage,
         _body = body;
 
   /// Request InternalServerError
@@ -195,63 +120,10 @@ final class Response {
       : status = HttpStatus.internalServerError,
         _body = body;
 
-  /// Request LengthRequired
-  const Response.lengthRequired(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.lengthRequired,
-        _body = body;
-
-  /// Request Locked
-  const Response.locked({required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.locked,
-        _body = body;
-
-  /// Request LoopDetected
-  const Response.loopDetected(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.loopDetected,
-        _body = body;
-
-  /// Request MisdirectedRequest
-  const Response.misdirectedRequest(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.misdirectedRequest,
-        _body = body;
-
-  /// Request MultiStatus
-  const Response.multiStatus(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.multiStatus,
-        _body = body;
-
-  /// Request MultipleChoices
-  const Response.multipleChoices(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.multipleChoices,
-        _body = body;
-
-  /// Request NetworkAuthenticationRequired
-  const Response.networkAuthenticationRequired(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.networkAuthenticationRequired,
-        _body = body;
-
-  /// Request NetworkConnectTimeoutError
-  const Response.networkConnectTimeoutError(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.networkConnectTimeoutError,
-        _body = body;
-
   /// Request NoContent
   const Response.noContent(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.noContent,
-        _body = body;
-
-  /// Request NonAuthoritativeInformation
-  const Response.nonAuthoritativeInformation(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.nonAuthoritativeInformation,
         _body = body;
 
   /// Request NotAcceptable
@@ -260,58 +132,10 @@ final class Response {
       : status = HttpStatus.notAcceptable,
         _body = body;
 
-  /// Request NotExtended
-  const Response.notExtended(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.notExtended,
-        _body = body;
-
-  /// Request NotImplemented
-  const Response.notImplemented(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.notImplemented,
-        _body = body;
-
   /// Request NotModified
   const Response.notModified(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.notModified,
-        _body = body;
-
-  /// Request PartialContent
-  const Response.partialContent(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.partialContent,
-        _body = body;
-
-  /// Request PaymentRequired
-  const Response.paymentRequired(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.paymentRequired,
-        _body = body;
-
-  /// Request PermanentRedirect
-  const Response.permanentRedirect(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.permanentRedirect,
-        _body = body;
-
-  /// Request PreconditionFailed
-  const Response.preconditionFailed(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.preconditionFailed,
-        _body = body;
-
-  /// Request Processing
-  const Response.processing(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.processing,
-        _body = body;
-
-  /// Request ProxyAuthenticationRequired
-  const Response.proxyAuthenticationRequired(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.proxyAuthenticationRequired,
         _body = body;
 
   /// Request RequestEntityTooLarge
@@ -320,58 +144,10 @@ final class Response {
       : status = HttpStatus.requestEntityTooLarge,
         _body = body;
 
-  /// Request RequestHeaderFieldsTooLarge
-  const Response.requestHeaderFieldsTooLarge(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.requestHeaderFieldsTooLarge,
-        _body = body;
-
   /// Request RequestTimeout
   const Response.requestTimeout(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.requestTimeout,
-        _body = body;
-
-  /// Request RequestUriTooLong
-  const Response.requestUriTooLong(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.requestUriTooLong,
-        _body = body;
-
-  /// Request RequestedRangeNotSatisfiable
-  const Response.requestedRangeNotSatisfiable(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.requestedRangeNotSatisfiable,
-        _body = body;
-
-  /// Request ResetContent
-  const Response.resetContent(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.resetContent,
-        _body = body;
-
-  /// Request SeeOther
-  const Response.seeOther(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.seeOther,
-        _body = body;
-
-  /// Request ServiceUnavailable
-  const Response.serviceUnavailable(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.serviceUnavailable,
-        _body = body;
-
-  /// Request SwitchingProtocols
-  const Response.switchingProtocols(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.switchingProtocols,
-        _body = body;
-
-  /// Request TemporaryRedirect
-  const Response.temporaryRedirect(
-      {required Object body, this.contentType, this.headers, this.cookies})
-      : status = HttpStatus.temporaryRedirect,
         _body = body;
 
   /// Request TooManyRequests
@@ -380,37 +156,265 @@ final class Response {
       : status = HttpStatus.tooManyRequests,
         _body = body;
 
-  /// Request UnavailableForLegalReasons
+  /// Request ServiceUnavailable
+  const Response.serviceUnavailable(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.serviceUnavailable,
+        _body = body;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Deprecated constructors — use Response(statusCode: ..., body: ...)
+  // ──────────────────────────────────────────────────────────────────
+
+  @Deprecated('Use Response(statusCode: HttpStatus.alreadyReported, body: ...)')
+  const Response.alreadyReported(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.alreadyReported,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.badGateway, body: ...)')
+  const Response.badGateway(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.badGateway,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.conflict, body: ...)')
+  const Response.conflict(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.conflict,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.connectionClosedWithoutResponse, body: ...)')
+  const Response.connectionClosedWithoutResponse(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.connectionClosedWithoutResponse,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.continue_, body: ...)')
+  const Response.continue_(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.continue_,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.expectationFailed, body: ...)')
+  const Response.expectationFailed(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.expectationFailed,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.failedDependency, body: ...)')
+  const Response.failedDependency(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.failedDependency,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.found, body: ...)')
+  const Response.found({required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.found,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.gatewayTimeout, body: ...)')
+  const Response.gatewayTimeout(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.gatewayTimeout,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.gone, body: ...)')
+  const Response.gone({required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.gone,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.httpVersionNotSupported, body: ...)')
+  const Response.httpVersionNotSupported(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.httpVersionNotSupported,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.imUsed, body: ...)')
+  const Response.imUsed({required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.imUsed,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.insufficientStorage, body: ...)')
+  const Response.insufficientStorage(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.insufficientStorage,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.lengthRequired, body: ...)')
+  const Response.lengthRequired(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.lengthRequired,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.locked, body: ...)')
+  const Response.locked({required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.locked,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.loopDetected, body: ...)')
+  const Response.loopDetected(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.loopDetected,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.misdirectedRequest, body: ...)')
+  const Response.misdirectedRequest(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.misdirectedRequest,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.multiStatus, body: ...)')
+  const Response.multiStatus(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.multiStatus,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.multipleChoices, body: ...)')
+  const Response.multipleChoices(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.multipleChoices,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.networkAuthenticationRequired, body: ...)')
+  const Response.networkAuthenticationRequired(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.networkAuthenticationRequired,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.networkConnectTimeoutError, body: ...)')
+  const Response.networkConnectTimeoutError(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.networkConnectTimeoutError,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.nonAuthoritativeInformation, body: ...)')
+  const Response.nonAuthoritativeInformation(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.nonAuthoritativeInformation,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.notExtended, body: ...)')
+  const Response.notExtended(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.notExtended,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.notImplemented, body: ...)')
+  const Response.notImplemented(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.notImplemented,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.partialContent, body: ...)')
+  const Response.partialContent(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.partialContent,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.paymentRequired, body: ...)')
+  const Response.paymentRequired(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.paymentRequired,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.permanentRedirect, body: ...)')
+  const Response.permanentRedirect(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.permanentRedirect,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.preconditionFailed, body: ...)')
+  const Response.preconditionFailed(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.preconditionFailed,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.processing, body: ...)')
+  const Response.processing(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.processing,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.proxyAuthenticationRequired, body: ...)')
+  const Response.proxyAuthenticationRequired(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.proxyAuthenticationRequired,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.requestHeaderFieldsTooLarge, body: ...)')
+  const Response.requestHeaderFieldsTooLarge(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.requestHeaderFieldsTooLarge,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.requestUriTooLong, body: ...)')
+  const Response.requestUriTooLong(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.requestUriTooLong,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.requestedRangeNotSatisfiable, body: ...)')
+  const Response.requestedRangeNotSatisfiable(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.requestedRangeNotSatisfiable,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.resetContent, body: ...)')
+  const Response.resetContent(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.resetContent,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.seeOther, body: ...)')
+  const Response.seeOther(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.seeOther,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.switchingProtocols, body: ...)')
+  const Response.switchingProtocols(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.switchingProtocols,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.temporaryRedirect, body: ...)')
+  const Response.temporaryRedirect(
+      {required Object body, this.contentType, this.headers, this.cookies})
+      : status = HttpStatus.temporaryRedirect,
+        _body = body;
+
+  @Deprecated('Use Response(statusCode: HttpStatus.unavailableForLegalReasons, body: ...)')
   const Response.unavailableForLegalReasons(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.unavailableForLegalReasons,
         _body = body;
 
-  /// Request UnprocessableEntity
+  @Deprecated('Use Response(statusCode: HttpStatus.unprocessableEntity, body: ...)')
   const Response.unprocessableEntity(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.unprocessableEntity,
         _body = body;
 
-  /// Request UnsupportedMediaType
+  @Deprecated('Use Response(statusCode: HttpStatus.unsupportedMediaType, body: ...)')
   const Response.unsupportedMediaType(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.unsupportedMediaType,
         _body = body;
 
-  /// Request UpgradeRequired
+  @Deprecated('Use Response(statusCode: HttpStatus.upgradeRequired, body: ...)')
   const Response.upgradeRequired(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.upgradeRequired,
         _body = body;
 
-  /// Request UseProxy
+  @Deprecated('Use Response(statusCode: HttpStatus.useProxy, body: ...)')
   const Response.useProxy(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.useProxy,
         _body = body;
 
-  /// Request VariantAlsoNegotiates
+  @Deprecated('Use Response(statusCode: HttpStatus.variantAlsoNegotiates, body: ...)')
   const Response.variantAlsoNegotiates(
       {required Object body, this.contentType, this.headers, this.cookies})
       : status = HttpStatus.variantAlsoNegotiates,
