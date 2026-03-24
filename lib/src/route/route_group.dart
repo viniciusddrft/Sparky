@@ -24,7 +24,7 @@ final class RouteGroup {
   /// Guards that apply to all routes in this group.
   ///
   /// Group guards run before individual route guards.
-  final List<MiddlewareNulable> guards;
+  final List<MiddlewareNullable> guards;
 
   RouteGroup(this.prefix,
       {required List<Route> routes, this.guards = const []})

@@ -33,7 +33,7 @@ final class StaticFiles {
   ///
   /// Only handles GET and HEAD requests. Returns `null` for non-matching
   /// paths so the pipeline continues to the next handler.
-  MiddlewareNulable createMiddleware() {
+  MiddlewareNullable createMiddleware() {
     return (HttpRequest request) async {
       if (request.method != 'GET' && request.method != 'HEAD') return null;
 

@@ -8,11 +8,12 @@ Sparky é um pacote Dart para construção de APIs REST de forma simples, com su
 
 - Rotas dinâmicas com path parameters (`:id`)
 - Agrupamento de rotas com prefixo (`RouteGroup`)
-- Cache automático nas rotas (diferenciado por método HTTP)
-- Suporte a CORS configurável
+- Guards por rota e por grupo
+- Cache automático nas rotas (diferenciado por método HTTP, com TTL e limite de entradas)
+- Suporte a CORS configurável (multi-origin, credentials, `Vary: Origin`)
 - Sistema de logs (console, arquivo ou ambos)
 - Suporte a WebSocket
-- Autenticação JWT com expiração
+- Autenticação JWT com expiração (HS256, sem padding base64url, validação de algoritmo)
 - Pipeline antes e depois do middleware principal
 - Serialização automática de Map/List para JSON
 - Headers customizados na Response
@@ -20,10 +21,12 @@ Sparky é um pacote Dart para construção de APIs REST de forma simples, com su
 - Parsing de JSON body, form-data e URL-encoded
 - Limite de tamanho de body (`maxBodySize`)
 - Timeout por request (`requestTimeout`)
-- Compressão gzip (`enableGzip`, `gzipMinLength`)
+- Compressão gzip para responses normais e streams (`enableGzip`, `gzipMinLength`)
 - Rate limiting pronto para uso
-- Servir arquivos estáticos com `StaticFiles`
+- Servir arquivos estáticos com `StaticFiles` (ETag, Last-Modified, 304)
 - Helpers de content negotiation e cookies
+- Validação de request body (`Validator`)
+- HTTPS/TLS nativo via `SecurityContext`
 
 ## Como Usar
 
@@ -143,6 +146,42 @@ final route = RouteHttp.get('/download', middleware: (request) async {
 });
 ```
 
+### Validação de request body
+
+```dart
+final schema = Validator({
+  'name': [isRequired, isString, minLength(3)],
+  'email': [isRequired, isString, isEmail],
+  'age': [isRequired, isNum, min(18)],
+});
+
+RouteHttp.post('/register', middleware: (request) async {
+  final body = await request.getJsonBody();
+  final errors = schema.validate(body);
+  if (errors.isNotEmpty) {
+    return Response.badRequest(body: {'errors': errors});
+  }
+  return Response.created(body: {'ok': true});
+});
+```
+
+### Guards por rota
+
+Guards são middlewares que rodam antes do handler da rota. Se qualquer guard retornar uma `Response`, a rota não executa.
+
+```dart
+Future<Response?> authGuard(HttpRequest request) async {
+  final token = request.headers.value('Authorization');
+  if (token != null && authJwt.verifyToken(token)) return null;
+  return const Response.unauthorized(body: {'error': 'Não autorizado'});
+}
+
+final route = RouteHttp.get('/admin',
+  middleware: (r) async => const Response.ok(body: {'admin': true}),
+  guards: [authGuard],
+);
+```
+
 ### Como personalizar o ip e porta
 
 ```dart
@@ -176,11 +215,16 @@ Sparky.server(
 ### Suporte a CORS
 
 ```dart
+// Múltiplas origins — o middleware reflete a origin do request se permitida
 const cors = CorsConfig(
+  allowOrigins: ['https://meuapp.com', 'https://admin.meuapp.com'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 );
-// Ou use CorsConfig.permissive() para desenvolvimento
 
+// Com credentials (allowOrigins: ['*'] reflete a origin do request ao invés de *)
+const corsWithCreds = CorsConfig(allowCredentials: true);
+
+// Ou use CorsConfig.permissive() para desenvolvimento
 Sparky.server(
   routes: [...],
   pipelineBefore: Pipeline()

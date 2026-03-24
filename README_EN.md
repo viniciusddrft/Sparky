@@ -8,11 +8,12 @@ Sparky is a Dart package for building REST APIs in a simple way, with support fo
 
 - Dynamic routes with path parameters (`:id`)
 - Route grouping with prefix (`RouteGroup`)
-- Automatic route caching (per HTTP method)
-- Configurable CORS support
+- Per-route and per-group guards
+- Automatic route caching (per HTTP method, with TTL and max entries)
+- Configurable CORS support (multi-origin, credentials, `Vary: Origin`)
 - Logging system (console, file or both)
 - WebSocket support
-- JWT authentication with expiration
+- JWT authentication with expiration (HS256, no base64url padding, algorithm validation)
 - Pipeline before and after the main middleware
 - Automatic Map/List to JSON serialization
 - Custom headers in Response
@@ -20,10 +21,12 @@ Sparky is a Dart package for building REST APIs in a simple way, with support fo
 - JSON body, form-data and URL-encoded parsing
 - Request body size limit (`maxBodySize`)
 - Per-request timeout (`requestTimeout`)
-- Gzip compression (`enableGzip`, `gzipMinLength`)
+- Gzip compression for normal and stream responses (`enableGzip`, `gzipMinLength`)
 - Built-in rate limiting
-- Static file serving with `StaticFiles`
+- Static file serving with `StaticFiles` (ETag, Last-Modified, 304)
 - Content negotiation and cookie helpers
+- Request body validation (`Validator`)
+- Native HTTPS/TLS via `SecurityContext`
 
 ## How to Use
 
@@ -143,6 +146,42 @@ final route = RouteHttp.get('/download', middleware: (request) async {
 });
 ```
 
+### Request body validation
+
+```dart
+final schema = Validator({
+  'name': [isRequired, isString, minLength(3)],
+  'email': [isRequired, isString, isEmail],
+  'age': [isRequired, isNum, min(18)],
+});
+
+RouteHttp.post('/register', middleware: (request) async {
+  final body = await request.getJsonBody();
+  final errors = schema.validate(body);
+  if (errors.isNotEmpty) {
+    return Response.badRequest(body: {'errors': errors});
+  }
+  return Response.created(body: {'ok': true});
+});
+```
+
+### Per-route guards
+
+Guards are middlewares that run before the route handler. If any guard returns a `Response`, the route handler is skipped.
+
+```dart
+Future<Response?> authGuard(HttpRequest request) async {
+  final token = request.headers.value('Authorization');
+  if (token != null && authJwt.verifyToken(token)) return null;
+  return const Response.unauthorized(body: {'error': 'Unauthorized'});
+}
+
+final route = RouteHttp.get('/admin',
+  middleware: (r) async => const Response.ok(body: {'admin': true}),
+  guards: [authGuard],
+);
+```
+
 ### Customizing IP and port
 
 ```dart
@@ -176,11 +215,16 @@ Sparky.server(
 ### CORS support
 
 ```dart
+// Multiple origins — the middleware reflects the request origin if allowed
 const cors = CorsConfig(
+  allowOrigins: ['https://myapp.com', 'https://admin.myapp.com'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 );
-// Or use CorsConfig.permissive() for development
 
+// With credentials (allowOrigins: ['*'] reflects the request origin instead of *)
+const corsWithCreds = CorsConfig(allowCredentials: true);
+
+// Or use CorsConfig.permissive() for development
 Sparky.server(
   routes: [...],
   pipelineBefore: Pipeline()

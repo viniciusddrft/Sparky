@@ -39,7 +39,7 @@ final class RateLimiter {
   ///
   /// Returns 429 Too Many Requests with a `Retry-After` header when the
   /// limit is exceeded. Returns `null` to continue the pipeline otherwise.
-  MiddlewareNulable createMiddleware() {
+  MiddlewareNullable createMiddleware() {
     return (HttpRequest request) async {
       _cleanupIfNeeded();
 

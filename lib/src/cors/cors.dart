@@ -55,7 +55,7 @@ final class CorsConfig {
   /// a 204 with the appropriate headers. For other requests, returns
   /// `null` so the pipeline continues, but the CORS headers are set
   /// directly on the response.
-  MiddlewareNulable createMiddleware() {
+  MiddlewareNullable createMiddleware() {
     return (HttpRequest request) async {
       final requestOrigin = request.headers.value('origin');
       if (request.method == 'OPTIONS') {

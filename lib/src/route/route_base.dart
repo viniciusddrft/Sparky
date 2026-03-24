@@ -13,10 +13,10 @@ base class Route {
 
   /// Middleware guards that run before the route handler.
   ///
-  /// Each guard is a [MiddlewareNulable]. If any guard returns a [Response],
+  /// Each guard is a [MiddlewareNullable]. If any guard returns a [Response],
   /// the pipeline short-circuits and that response is sent to the client.
   /// If all guards return `null`, the route handler executes normally.
-  final List<MiddlewareNulable> guards;
+  final List<MiddlewareNullable> guards;
 
   int _versionCache = 0;
 

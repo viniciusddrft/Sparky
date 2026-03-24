@@ -9,7 +9,7 @@ import 'package:sparky/src/response/response.dart';
 typedef Middleware = Future<Response> Function(HttpRequest request);
 
 /// Nullable middleware that receives an [HttpRequest] and returns a [Future<Response?>].
-typedef MiddlewareNulable = Future<Response?> Function(HttpRequest request);
+typedef MiddlewareNullable = Future<Response?> Function(HttpRequest request);
 
 ///WebSocket middleware that receives a [WebSocket] and returns void.
 typedef MiddlewareWebSocket = Future<void> Function(WebSocket webSocket);

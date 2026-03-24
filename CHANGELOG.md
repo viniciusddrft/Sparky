@@ -1,3 +1,35 @@
+# 2.1.0
+
+### Melhorias de Segurança
+
+- **CORS corrigido conforme a spec**: `Access-Control-Allow-Origin` não aceita múltiplas origins separadas por vírgula. Agora o middleware verifica o `Origin` do request e reflete a origin permitida. Quando `allowCredentials: true` com wildcard, reflete a origin do request ao invés de `*` (conforme exigido pela spec). Header `Vary: Origin` adicionado quando a resposta varia por origin.
+- **JWT: remoção de padding base64url (RFC 7515/7519)**: Tokens gerados agora usam base64url sem padding (`=`), conforme exigido pelas RFCs. Tokens antigos com padding continuam sendo decodificados via `base64Url.normalize()`.
+- **JWT: validação de algoritmo no `verifyToken`**: Previne ataques de *algorithm confusion* — agora verifica que o header especifica `HS256` antes de aceitar o token.
+
+### Melhorias
+
+- **Gzip em stream responses**: Responses baseadas em `Stream<List<int>>` (ex: arquivos estáticos via `StaticFiles`) agora são comprimidas com gzip quando `enableGzip: true` e o content-type é comprimível (text/*, application/json, etc.). Binários como imagens não são comprimidos.
+- **`RateLimiter.maxClients` obrigatório com default**: Antes era `int?` — agora é `int` com default `10000`, garantindo que o mapa de clientes nunca cresce indefinidamente.
+- **Encapsulamento do cache**: `cacheManager` público substituído por `_cacheManager` privado com métodos públicos `isCached()`, `getCachedResponse()` e `cacheResponse()`.
+- **`Sparky.actualPort`**: Nova propriedade para obter a porta real quando usando `port: 0` (porta atribuída pelo OS).
+- **Reorganização de `Response`**: Construtores mais usados (`created`, `internalServerError`, `noContent`, `tooManyRequests`, `serviceUnavailable`, etc.) separados no topo. Construtores raramente usados marcados com `@Deprecated` com mensagem indicando o construtor genérico.
+
+### Breaking Changes
+
+- **`MiddlewareNulable` renomeado para `MiddlewareNullable`**: Correção de typo no typedef público. Atualize `MiddlewareNulable` → `MiddlewareNullable` no seu código.
+- **`RateLimiter.maxClients`** agora é `int` (não mais `int?`). O default `10000` mantém o comportamento anterior para quem não passava o parâmetro.
+- **`SparkyBase.cacheManager`** não é mais acessível publicamente. Use `isCached()`, `getCachedResponse()` e `cacheResponse()`.
+
+### Testes
+
+- Adicionados testes para CORS (multi-origin, origin não permitida, wildcard, credentials + wildcard, preflight).
+- Adicionados testes para gzip em stream responses (text comprimido, binário não comprimido).
+- Adicionado teste para tokens JWT sem padding base64url.
+- Todos os testes migrados de portas hardcoded para `port: 0` + `server.actualPort`, eliminando colisões de porta em CI.
+- Total: 105 testes passando.
+
+---
+
 # 2.0.1
 
 ### Correções de Bugs
