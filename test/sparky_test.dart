@@ -2181,7 +2181,7 @@ void main() {
   // ──────────────────────────────────────────────────────────────────
 
   group('Multipart parsing (unit)', () {
-    test('parses text fields from multipart body', () {
+    test('parses text fields from multipart body', () async {
       const boundary = '----TestBoundary';
       const body = '------TestBoundary\r\n'
           'Content-Disposition: form-data; name="name"\r\n'
@@ -2193,10 +2193,10 @@ void main() {
           '2.1.0\r\n'
           '------TestBoundary--\r\n';
 
-      final data = parseMultipart(
-        Uint8List.fromList(utf8.encode(body)),
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
         boundary,
-      );
+      ).parse();
 
       expect(data.fields['name'], 'Sparky');
       expect(data.fields['version'], '2.1.0');
@@ -2204,7 +2204,7 @@ void main() {
       expect(data.fileList, isEmpty);
     });
 
-    test('parses file uploads with binary content', () {
+    test('parses file uploads with binary content', () async {
       const boundary = '----TestBoundary';
       // Create some binary content (non-UTF8-safe bytes)
       final binaryContent = Uint8List.fromList([0, 1, 2, 255, 254, 253, 128]);
@@ -2219,7 +2219,9 @@ void main() {
         ...utf8.encode('------TestBoundary--\r\n'),
       ];
 
-      final data = parseMultipart(Uint8List.fromList(bodyParts), boundary);
+      final data = await MultipartParser(
+          Stream.value(Uint8List.fromList(bodyParts)), boundary)
+          .parse();
 
       expect(data.files.containsKey('avatar'), isTrue);
       final file = data.files['avatar']!;
@@ -2230,7 +2232,7 @@ void main() {
       expect(file.size, binaryContent.length);
     });
 
-    test('parses mixed fields and files', () {
+    test('parses mixed fields and files', () async {
       const boundary = 'MixedBoundary';
       const body = '--MixedBoundary\r\n'
           'Content-Disposition: form-data; name="title"\r\n'
@@ -2243,10 +2245,10 @@ void main() {
           'Hello World\r\n'
           '--MixedBoundary--\r\n';
 
-      final data = parseMultipart(
-        Uint8List.fromList(utf8.encode(body)),
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
         boundary,
-      );
+      ).parse();
 
       expect(data.fields['title'], 'My Document');
       expect(data.files['file']?.filename, 'doc.txt');
@@ -2254,8 +2256,8 @@ void main() {
       expect(data.fileList.length, 1);
     });
 
-    test('returns empty MultipartData for empty body', () {
-      final data = parseMultipart(Uint8List(0), 'boundary');
+    test('returns empty MultipartData for empty body', () async {
+      final data = await MultipartParser(Stream.value(Uint8List(0)), 'boundary').parse();
       expect(data.fields, isEmpty);
       expect(data.files, isEmpty);
     });

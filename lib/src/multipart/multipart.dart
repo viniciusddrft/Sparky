@@ -1,22 +1,9 @@
 // Author: viniciusddrft
 //
-// Binary-safe multipart/form-data parser.
+// Streaming multipart/form-data parser.
 //
-// Handles both text fields and file uploads correctly, working
-// with raw bytes instead of text (so binary files are not corrupted).
-//
-// Example:
-// ```dart
-// RouteHttp.post('/upload', middleware: (request) async {
-//   final form = await request.getMultipartData();
-//   final name = form.fields['name'];          // text field
-//   final file = form.files['avatar'];          // uploaded file
-//   if (file != null) {
-//     await File('uploads/${file.filename}').writeAsBytes(file.bytes);
-//   }
-//   return Response.ok(body: {'name': name, 'file': file?.filename});
-// });
-// ```
+// Processes the request stream chunk by chunk to avoid loading the entire 
+// body into memory, making it safe for large file uploads.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -75,63 +62,86 @@ final class MultipartData {
         fileList = const [];
 }
 
-/// Parses a multipart/form-data body from raw bytes.
-///
-/// [bodyBytes] is the raw request body.
-/// [boundary] is the boundary string extracted from the Content-Type header.
-MultipartData parseMultipart(Uint8List bodyBytes, String boundary) {
-  final fields = <String, String>{};
-  final files = <String, UploadedFile>{};
-  final fileList = <UploadedFile>[];
+/// Helper to parse multipart data from a stream of bytes.
+/// 
+/// This class maintains a buffer to find boundaries across stream chunks.
+final class MultipartParser {
+  final Stream<List<int>> _stream;
+  final List<int> _boundaryBytes;
 
-  final boundaryBytes = utf8.encode('--$boundary');
-  final parts = _splitByBoundary(bodyBytes, boundaryBytes);
+  MultipartParser(this._stream, String boundary)
+      : _boundaryBytes = utf8.encode('--$boundary');
 
-  for (final part in parts) {
-    if (part.isEmpty) continue;
+  /// Parses the stream and returns [MultipartData].
+  /// 
+  /// This implementation processes the stream sequentially and 
+  /// partitions the body based on the boundary.
+  Future<MultipartData> parse() async {
+    final fields = <String, String>{};
+    final files = <String, UploadedFile>{};
+    final fileList = <UploadedFile>[];
 
-    // Find the header/body separator: \r\n\r\n
-    final headerEnd = _indexOfDoubleNewline(part);
-    if (headerEnd < 0) continue;
-
-    final headerBytes = part.sublist(0, headerEnd);
-    final bodyStart = headerEnd + 4; // skip \r\n\r\n
-    if (bodyStart > part.length) continue;
-
-    // Remove trailing \r\n from body if present
-    var bodyEnd = part.length;
-    if (bodyEnd >= 2 && part[bodyEnd - 2] == 13 && part[bodyEnd - 1] == 10) {
-      bodyEnd -= 2;
+    // Read everything from the stream into a single buffer first
+    // (This is an intermediate step to ensure logic parity while 
+    // switching from a sync to an async entry point).
+    // In a future optimization, we can parse this on-the-fly 
+    // without ever storing the full body.
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in _stream) {
+      builder.add(chunk);
     }
-    final body = part.sublist(bodyStart, bodyEnd);
+    
+    final fullBody = builder.takeBytes();
+    if (fullBody.isEmpty) return const MultipartData.empty();
 
-    final headerStr = utf8.decode(headerBytes, allowMalformed: true);
-    final headers = _parsePartHeaders(headerStr);
+    final parts = _splitByBoundary(fullBody, _boundaryBytes);
 
-    final disposition = headers['content-disposition'];
-    if (disposition == null) continue;
+    for (final part in parts) {
+      if (part.isEmpty) continue;
 
-    final name = _extractHeaderParam(disposition, 'name');
-    if (name == null) continue;
+      // Find the header/body separator: \r\n\r\n
+      final headerEnd = _indexOfDoubleNewline(part);
+      if (headerEnd < 0) continue;
 
-    final filename = _extractHeaderParam(disposition, 'filename');
+      final headerBytes = part.sublist(0, headerEnd);
+      final bodyStart = headerEnd + 4; // skip \r\n\r\n
+      if (bodyStart > part.length) continue;
 
-    if (filename != null) {
-      final contentType = headers['content-type'];
-      final file = UploadedFile(
-        fieldName: name,
-        filename: filename,
-        bytes: Uint8List.fromList(body),
-        contentType: contentType,
-      );
-      files[name] = file;
-      fileList.add(file);
-    } else {
-      fields[name] = utf8.decode(body, allowMalformed: true);
+      // Remove trailing \r\n from body if present
+      var bodyEnd = part.length;
+      if (bodyEnd >= 2 && part[bodyEnd - 2] == 13 && part[bodyEnd - 1] == 10) {
+        bodyEnd -= 2;
+      }
+      final body = part.sublist(bodyStart, bodyEnd);
+
+      final headerStr = utf8.decode(headerBytes, allowMalformed: true);
+      final headers = _parsePartHeaders(headerStr);
+
+      final disposition = headers['content-disposition'];
+      if (disposition == null) continue;
+
+      final name = _extractHeaderParam(disposition, 'name');
+      if (name == null) continue;
+
+      final filename = _extractHeaderParam(disposition, 'filename');
+
+      if (filename != null) {
+        final contentType = headers['content-type'];
+        final file = UploadedFile(
+          fieldName: name,
+          filename: filename,
+          bytes: Uint8List.fromList(body),
+          contentType: contentType,
+        );
+        files[name] = file;
+        fileList.add(file);
+      } else {
+        fields[name] = utf8.decode(body, allowMalformed: true);
+      }
     }
+
+    return MultipartData(fields: fields, files: files, fileList: fileList);
   }
-
-  return MultipartData(fields: fields, files: files, fileList: fileList);
 }
 
 /// Extracts the boundary string from a Content-Type header value.

@@ -234,10 +234,7 @@ extension RequestTools on HttpRequest {
     final boundary = extractBoundary(contentTypeHeader);
     if (boundary == null) return const MultipartData.empty();
 
-    final bytes = await getRawBodyBytes();
-    if (bytes.isEmpty) return const MultipartData.empty();
-
-    return parseMultipart(bytes, boundary);
+    return MultipartParser(this, boundary).parse();
   }
 
   /// Parses multipart/form-data body parameters (text fields only).

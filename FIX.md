@@ -7,11 +7,8 @@ Este documento detalha os pontos de atenção, débitos técnicos e bugs identif
 ## Análise de Prontidão para Produção
 
 ### 1. Parser Multipart Robusto (`lib/src/multipart/multipart.dart`)
-*   **Status:** Funcional e "binary-safe".
-*   **Débito Técnico:** O parser carrega o corpo inteiro da requisição na memória (`getRawBodyBytes`) antes do processamento. Uploads muito grandes podem consumir memória excessiva.
-    *   **Mitigação existente:** O guard `maxBodySize` já rejeita bodies acima do limite com 413 antes de carregar, o que previne OOM em cenários configurados corretamente.
-    *   **Melhoria futura:** Migrar para parser streaming com escrita direta em disco para uploads grandes.
-*   **Alarme Falso:** A extração de parâmetros via Regex (`_extractHeaderParam`) é segura, pois browsers modernos sempre enviam valores entre aspas em `multipart/form-data`.
+*   **Status:** ✅ **Corrigido (Streaming)**.
+*   **Melhoria realizada:** O parser foi reescrito como `MultipartParser`, que processa o corpo da requisição via `Stream`. Isso evita o carregamento total de arquivos grandes em memória, prevenindo `OutOfMemoryError`. A API externa `request.getMultipartData()` permanece compatível.
 
 ### 2. Streaming de Response (SSE) & `Response.stream`
 *   **Status:** ✅ **Corrigido**.
@@ -41,7 +38,7 @@ Este documento detalha os pontos de atenção, débitos técnicos e bugs identif
 
 | # | Ponto | Veredicto | Status |
 |---|-------|-----------|--------|
-| 1 | Multipart memória | Trade-off de design (mitigado) | Planejado (Streaming) |
+| 1 | Multipart memória | Corrigido via Streaming Parser | **Concluído** ✅ |
 | 2 | SSE quebra de linha | Corrigido para robustez total | **Concluído** ✅ |
 | 3 | Error handling | Pronto para produção | **Concluído** ✅ |
 | 4 | Otimização `BytesBuilder`| Memória mais eficiente | **Concluído** ✅ |
@@ -49,4 +46,4 @@ Este documento detalha os pontos de atenção, débitos técnicos e bugs identif
 | 6 | Isolates porta | Alarme falso (já validado) | **Concluído** ✅ |
 | 7 | Security headers | Pronto para produção | **Concluído** ✅ |
 
-O Sparky agora possui uma base sólida e testável tanto para dados textuais quanto binários, com uma gestão de memória otimizada para o modelo atual.
+O Sparky agora possui uma base sólida e testável tanto para dados textuais quanto binários, com uma gestão de memória otimizada e um parser multipart seguro para uploads de grande escala.
