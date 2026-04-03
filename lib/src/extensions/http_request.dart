@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:sparky/src/multipart/multipart.dart';
 
 final Expando<String> _rawBodyCache = Expando<String>();
 final Expando<Map<String, String>> _pathParamsStore =
     Expando<Map<String, String>>();
 final Expando<int> _maxBodySizeStore = Expando<int>();
 final Expando<bool> _cancelledStore = Expando<bool>();
+final Expando<Map<Type, Object>> _diStore = Expando<Map<Type, Object>>();
+final Expando<Uint8List> _rawBodyBytesCache = Expando<Uint8List>();
 
 final class BodyTooLargeException implements Exception {
   final int maxBytes;
@@ -96,6 +101,54 @@ extension RequestTools on HttpRequest {
     _cancelledStore[this] = true;
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Dependency Injection
+  // ──────────────────────────────────────────────────────────────────
+
+  /// Stores a value of type [T] in the request's DI container.
+  ///
+  /// Use this in guards or pipeline middlewares to inject dependencies
+  /// that downstream handlers can access via [read].
+  ///
+  /// ```dart
+  /// // In a guard:
+  /// Future<Response?> authGuard(HttpRequest request) async {
+  ///   final user = await authenticate(request);
+  ///   if (user == null) return const Response.unauthorized(body: 'Denied');
+  ///   request.provide<User>(user);
+  ///   return null;
+  /// }
+  ///
+  /// // In a handler:
+  /// final user = request.read<User>();
+  /// ```
+  void provide<T extends Object>(T value) {
+    final store = _diStore[this] ?? {};
+    store[T] = value;
+    _diStore[this] = store;
+  }
+
+  /// Retrieves a value of type [T] previously stored via [provide].
+  ///
+  /// Throws [StateError] if no value of type [T] has been provided.
+  /// Use [tryRead] for a null-safe alternative.
+  T read<T extends Object>() {
+    final store = _diStore[this];
+    final value = store?[T];
+    if (value == null) {
+      throw StateError('No instance of type $T has been provided on this request. '
+          'Call request.provide<$T>(value) first.');
+    }
+    return value as T;
+  }
+
+  /// Retrieves a value of type [T] previously stored via [provide],
+  /// or `null` if not found.
+  T? tryRead<T extends Object>() {
+    final store = _diStore[this];
+    return store?[T] as T?;
+  }
+
   /// Returns the cookie with the given [name], or `null` if not found.
   Cookie? getCookie(String name) {
     for (final cookie in cookies) {
@@ -147,7 +200,51 @@ extension RequestTools on HttpRequest {
     return Uri.splitQueryString(content);
   }
 
-  /// Parses multipart/form-data body parameters.
+  /// Reads the raw body as bytes, caching for reuse.
+  ///
+  /// Unlike [getRawBody], this preserves binary data without
+  /// UTF-8 decoding and is used internally by [getMultipartData].
+  Future<Uint8List> getRawBodyBytes() async {
+    final cached = _rawBodyBytesCache[this];
+    if (cached != null) return cached;
+
+    final bytes = await _readRawBodyBytesWithLimit(this);
+    _rawBodyBytesCache[this] = bytes;
+    return bytes;
+  }
+
+  /// Parses a `multipart/form-data` body into fields and files.
+  ///
+  /// This is a binary-safe parser that correctly handles file
+  /// uploads with arbitrary binary content.
+  ///
+  /// ```dart
+  /// final form = await request.getMultipartData();
+  /// final name = form.fields['name'];
+  /// final avatar = form.files['avatar'];
+  /// if (avatar != null) {
+  ///   await File('uploads/${avatar.filename}').writeAsBytes(avatar.bytes);
+  /// }
+  /// ```
+  ///
+  /// Returns [MultipartData.empty] if the request is not
+  /// `multipart/form-data` or has no boundary.
+  Future<MultipartData> getMultipartData() async {
+    final contentTypeHeader = headers.value('content-type');
+    final boundary = extractBoundary(contentTypeHeader);
+    if (boundary == null) return const MultipartData.empty();
+
+    final bytes = await getRawBodyBytes();
+    if (bytes.isEmpty) return const MultipartData.empty();
+
+    return parseMultipart(bytes, boundary);
+  }
+
+  /// Parses multipart/form-data body parameters (text fields only).
+  ///
+  /// **Deprecated**: Use [getMultipartData] instead, which also handles
+  /// file uploads correctly with binary-safe parsing.
+  @Deprecated('Use getMultipartData() for binary-safe multipart parsing')
   Future<Map<String, String>> getBodyParams() async {
     final content = await getRawBody();
     if (content.isEmpty) return {};
@@ -170,6 +267,22 @@ Future<String> _readRawBodyWithLimit(HttpRequest request) async {
     return cached;
   }
 
+  final bytes = await _readRawBodyBytesWithLimit(request);
+  final content = utf8.decode(bytes, allowMalformed: true);
+  _rawBodyCache[request] = content;
+  return content;
+}
+
+Future<Uint8List> _readRawBodyBytesWithLimit(HttpRequest request) async {
+  final cached = _rawBodyBytesCache[request];
+  final maxBytes = _maxBodySizeStore[request];
+  if (cached != null) {
+    if (maxBytes != null && cached.length > maxBytes) {
+      throw BodyTooLargeException(maxBytes);
+    }
+    return cached;
+  }
+
   final chunks = <int>[];
   var total = 0;
   await for (final chunk in request) {
@@ -179,9 +292,9 @@ Future<String> _readRawBodyWithLimit(HttpRequest request) async {
     }
     chunks.addAll(chunk);
   }
-  final content = utf8.decode(chunks);
-  _rawBodyCache[request] = content;
-  return content;
+  final bytes = Uint8List.fromList(chunks);
+  _rawBodyBytesCache[request] = bytes;
+  return bytes;
 }
 
 List<_AcceptRange> _parseAcceptHeader(String headerValue) {

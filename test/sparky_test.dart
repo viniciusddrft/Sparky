@@ -3,8 +3,28 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 import 'package:test/test.dart' hide isList, isMap, matches;
 import 'package:sparky/sparky.dart';
+import 'package:sparky/testing.dart';
+
+/// Top-level factory for isolate tests (closures can't cross isolate boundaries).
+Sparky _createTestServer(int isolateIndex) {
+  return Sparky.server(
+    port: 4599,
+    shared: true,
+    logConfig: LogConfig.none,
+    routes: [
+      RouteHttp.get('/hello', middleware: (r) async {
+        return Response.ok(body: {
+          'message': 'Hello from isolate',
+          'isolate': Isolate.current.debugName,
+        });
+      }),
+    ],
+  );
+}
 
 void main() {
   group('Route validation', () {
@@ -1648,6 +1668,914 @@ void main() {
       expect(response.headers.value('Vary'), 'Origin');
       client.close();
       await server.close();
+    });
+  });
+
+  group('Shared server (single isolate)', () {
+    test('server with shared: true works normally', () async {
+      final server = Sparky.server(
+        routes: [
+          RouteHttp.get('/ping',
+              middleware: (r) async => const Response.ok(body: 'pong')),
+        ],
+        port: 0,
+        shared: true,
+        logConfig: LogConfig.none,
+      );
+      await server.ready;
+
+      final client = HttpClient();
+      final request = await client.get('localhost', server.actualPort, '/ping');
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.ok);
+      final body = await utf8.decoder.bind(response).join();
+      expect(body, 'pong');
+      client.close();
+      await server.close();
+    });
+  });
+
+  group('Sparky.serve (multi-isolate)', () {
+    test('serves requests across isolates', () async {
+      final cluster = await Sparky.serve(_createTestServer, isolates: 2);
+
+      final client = HttpClient();
+      final request = await client.get('localhost', cluster.port, '/hello');
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.ok);
+      final body = json.decode(await utf8.decoder.bind(response).join());
+      expect(body['message'], 'Hello from isolate');
+      client.close();
+      await cluster.close();
+    });
+
+    test('cluster.close() frees the port', () async {
+      final cluster = await Sparky.serve(_createTestServer, isolates: 2);
+      final port = cluster.port;
+      await cluster.close();
+
+      // Port should be free — bind a new server on it
+      final server = Sparky.server(
+        routes: [
+          RouteHttp.get('/check',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        port: port,
+        logConfig: LogConfig.none,
+      );
+      await server.ready;
+      expect(server.actualPort, port);
+      await server.close();
+    });
+
+    test('single isolate mode works (isolates: 1)', () async {
+      final cluster = await Sparky.serve(_createTestServer, isolates: 1);
+
+      final client = HttpClient();
+      final request = await client.get('localhost', cluster.port, '/hello');
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.ok);
+      client.close();
+      await cluster.close();
+    });
+
+    test('throws when port: 0 with multiple isolates', () async {
+      Sparky portZeroFactory(int index) {
+        return Sparky.server(
+          port: 0,
+          shared: true,
+          logConfig: LogConfig.none,
+          routes: [
+            RouteHttp.get('/test',
+                middleware: (r) async => const Response.ok(body: 'ok')),
+          ],
+        );
+      }
+
+      await expectLater(
+        Sparky.serve(portZeroFactory, isolates: 2),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════
+  // HIGH-PRIORITY FEATURE TESTS
+  // ════════════════════════════════════════════════════════════════════
+
+  // ──────────────────────────────────────────────────────────────────
+  // 1. SparkyTestClient
+  // ──────────────────────────────────────────────────────────────────
+
+  group('SparkyTestClient', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/hello',
+              middleware: (r) async => const Response.ok(body: 'hi')),
+          RouteHttp.post('/echo', middleware: (r) async {
+            final body = await r.getJsonBody();
+            return Response.ok(body: body);
+          }),
+          RouteHttp.put('/put',
+              middleware: (r) async => const Response.ok(body: 'put-ok')),
+          RouteHttp.patch('/patch',
+              middleware: (r) async => const Response.ok(body: 'patch-ok')),
+          RouteHttp.delete('/del',
+              middleware: (r) async => const Response.ok(body: 'del-ok')),
+          RouteHttp.get('/headers', middleware: (r) async {
+            final custom = r.headers.value('x-custom');
+            return Response.ok(body: {'header': custom});
+          }),
+        ],
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('GET returns 200 with correct body', () async {
+      final res = await client.get('/hello');
+      expect(res.statusCode, 200);
+      expect(res.body, 'hi');
+    });
+
+    test('POST with JSON body', () async {
+      final res = await client.post('/echo', body: {'name': 'sparky'});
+      expect(res.statusCode, 200);
+      final json = res.jsonBody as Map<String, dynamic>;
+      expect(json['name'], 'sparky');
+    });
+
+    test('PUT request', () async {
+      final res = await client.put('/put');
+      expect(res.statusCode, 200);
+      expect(res.body, 'put-ok');
+    });
+
+    test('PATCH request', () async {
+      final res = await client.patch('/patch');
+      expect(res.statusCode, 200);
+      expect(res.body, 'patch-ok');
+    });
+
+    test('DELETE request', () async {
+      final res = await client.delete('/del');
+      expect(res.statusCode, 200);
+      expect(res.body, 'del-ok');
+    });
+
+    test('non-existent route returns 404', () async {
+      final res = await client.get('/nope');
+      expect(res.statusCode, 404);
+    });
+
+    test('custom headers are forwarded', () async {
+      final res = await client.get('/headers', headers: {'x-custom': 'test'});
+      expect(res.statusCode, 200);
+      final json = res.jsonBody as Map<String, dynamic>;
+      expect(json['header'], 'test');
+    });
+
+    test('baseUrl contains the port', () {
+      expect(client.baseUrl, contains('http://localhost:'));
+      expect(client.port, greaterThan(0));
+    });
+
+    test('from() wraps an existing server', () async {
+      final server = Sparky.server(
+        port: 0,
+        logConfig: LogConfig.none,
+        routes: [
+          RouteHttp.get('/test',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+      );
+      await server.ready;
+
+      final fromClient = SparkyTestClient.from(server);
+      final res = await fromClient.get('/test');
+      expect(res.statusCode, 200);
+      expect(res.body, 'ok');
+      await fromClient.close();
+    });
+
+    test('TestResponse.contentType returns content type', () async {
+      final res = await client.get('/hello');
+      expect(res.contentType, isNotNull);
+      expect(res.contentType!.primaryType, 'application');
+      expect(res.contentType!.subType, 'json');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // 2. Structured error handling (HttpException)
+  // ──────────────────────────────────────────────────────────────────
+
+  group('HttpException classes', () {
+    test('BadRequest has status 400', () {
+      expect(const BadRequest().statusCode, HttpStatus.badRequest);
+      expect(const BadRequest().message, 'Bad Request');
+    });
+
+    test('Unauthorized has status 401', () {
+      expect(const Unauthorized().statusCode, HttpStatus.unauthorized);
+    });
+
+    test('Forbidden has status 403', () {
+      expect(const Forbidden().statusCode, HttpStatus.forbidden);
+    });
+
+    test('NotFound has status 404', () {
+      expect(const NotFound().statusCode, HttpStatus.notFound);
+    });
+
+    test('MethodNotAllowed has status 405', () {
+      expect(const MethodNotAllowed().statusCode, HttpStatus.methodNotAllowed);
+    });
+
+    test('Conflict has status 409', () {
+      expect(const Conflict().statusCode, HttpStatus.conflict);
+    });
+
+    test('UnprocessableEntity has status 422', () {
+      expect(const UnprocessableEntity().statusCode,
+          HttpStatus.unprocessableEntity);
+    });
+
+    test('TooManyRequests has status 429', () {
+      expect(const TooManyRequests().statusCode, HttpStatus.tooManyRequests);
+    });
+
+    test('InternalServerError has status 500', () {
+      expect(const InternalServerError().statusCode,
+          HttpStatus.internalServerError);
+    });
+
+    test('BadGateway has status 502', () {
+      expect(const BadGateway().statusCode, HttpStatus.badGateway);
+    });
+
+    test('ServiceUnavailable has status 503', () {
+      expect(
+          const ServiceUnavailable().statusCode, HttpStatus.serviceUnavailable);
+    });
+
+    test('toJson includes errorCode and message', () {
+      const e = NotFound(message: 'User not found');
+      final json = e.toJson();
+      expect(json['errorCode'], '404');
+      expect(json['message'], 'User not found');
+    });
+
+    test('toJson includes details when provided', () {
+      const e = BadRequest(
+        message: 'Invalid input',
+        details: {'field': 'email'},
+      );
+      final json = e.toJson();
+      expect(json['errorCode'], '400');
+      expect(json['message'], 'Invalid input');
+      expect(json['field'], 'email');
+    });
+
+    test('toString returns readable format', () {
+      const e = NotFound(message: 'User not found');
+      expect(e.toString(), 'HttpException(404, User not found)');
+    });
+
+    test('custom HttpException with arbitrary status code', () {
+      const e = HttpException(418, "I'm a teapot");
+      expect(e.statusCode, 418);
+      expect(e.message, "I'm a teapot");
+    });
+  });
+
+  group('HttpException integration', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/not-found', middleware: (r) {
+            throw const NotFound(message: 'User not found');
+          }),
+          RouteHttp.get('/bad-request', middleware: (r) {
+            throw const BadRequest(
+              message: 'Invalid email',
+              details: {'field': 'email'},
+            );
+          }),
+          RouteHttp.get('/forbidden', middleware: (r) {
+            throw const Forbidden(message: 'Access denied');
+          }),
+          RouteHttp.get('/unauthorized', middleware: (r) {
+            throw const Unauthorized();
+          }),
+          RouteHttp.get('/conflict', middleware: (r) {
+            throw const Conflict(message: 'Duplicate entry');
+          }),
+          RouteHttp.get('/internal-error', middleware: (r) {
+            throw const InternalServerError(message: 'Something broke');
+          }),
+          RouteHttp.get('/custom-error', middleware: (r) {
+            throw const HttpException(418, "I'm a teapot");
+          }),
+        ],
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('NotFound returns 404 with JSON body', () async {
+      final res = await client.get('/not-found');
+      expect(res.statusCode, 404);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['errorCode'], '404');
+      expect(body['message'], 'User not found');
+    });
+
+    test('BadRequest returns 400 with details', () async {
+      final res = await client.get('/bad-request');
+      expect(res.statusCode, 400);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['errorCode'], '400');
+      expect(body['message'], 'Invalid email');
+      expect(body['field'], 'email');
+    });
+
+    test('Forbidden returns 403', () async {
+      final res = await client.get('/forbidden');
+      expect(res.statusCode, 403);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['message'], 'Access denied');
+    });
+
+    test('Unauthorized returns 401', () async {
+      final res = await client.get('/unauthorized');
+      expect(res.statusCode, 401);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['message'], 'Unauthorized');
+    });
+
+    test('Conflict returns 409', () async {
+      final res = await client.get('/conflict');
+      expect(res.statusCode, 409);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['message'], 'Duplicate entry');
+    });
+
+    test('InternalServerError returns 500', () async {
+      final res = await client.get('/internal-error');
+      expect(res.statusCode, 500);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['message'], 'Something broke');
+    });
+
+    test('custom HttpException returns correct status code', () async {
+      final res = await client.get('/custom-error');
+      expect(res.statusCode, 418);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['errorCode'], '418');
+      expect(body['message'], "I'm a teapot");
+    });
+
+    test('unhandled exception returns 500 generic error', () async {
+      final c = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/crash', middleware: (r) {
+            throw Exception('unexpected');
+          }),
+        ],
+      );
+      final res = await c.get('/crash');
+      expect(res.statusCode, 500);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['errorCode'], '500');
+      expect(body['message'], 'Internal Server Error');
+      await c.close();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // 3. Dependency Injection per request
+  // ──────────────────────────────────────────────────────────────────
+
+  group('Dependency injection', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/di-ok', middleware: (r) async {
+            final user = r.read<String>();
+            return Response.ok(body: {'user': user});
+          }, guards: [
+            (r) async {
+              r.provide<String>('admin');
+              return null;
+            }
+          ]),
+          RouteHttp.get('/di-missing', middleware: (r) async {
+            final user = r.read<String>();
+            return Response.ok(body: {'user': user});
+          }),
+          RouteHttp.get('/di-tryread', middleware: (r) async {
+            final user = r.tryRead<String>();
+            return Response.ok(body: {'user': user ?? 'none'});
+          }),
+          RouteHttp.get('/di-tryread-provided', middleware: (r) async {
+            final user = r.tryRead<String>();
+            return Response.ok(body: {'user': user ?? 'none'});
+          }, guards: [
+            (r) async {
+              r.provide<String>('alice');
+              return null;
+            }
+          ]),
+          RouteHttp.get('/di-multi', middleware: (r) async {
+            final name = r.read<String>();
+            final count = r.read<int>();
+            return Response.ok(body: {'name': name, 'count': count});
+          }, guards: [
+            (r) async {
+              r.provide<String>('bob');
+              r.provide<int>(42);
+              return null;
+            }
+          ]),
+        ],
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('guard provides value, handler reads it', () async {
+      final res = await client.get('/di-ok');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['user'], 'admin');
+    });
+
+    test('read throws StateError when no value provided', () async {
+      final res = await client.get('/di-missing');
+      // The StateError is an unhandled exception -> 500
+      expect(res.statusCode, 500);
+    });
+
+    test('tryRead returns null when no value provided', () async {
+      final res = await client.get('/di-tryread');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['user'], 'none');
+    });
+
+    test('tryRead returns value when provided', () async {
+      final res = await client.get('/di-tryread-provided');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['user'], 'alice');
+    });
+
+    test('multiple types can be provided and read', () async {
+      final res = await client.get('/di-multi');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['name'], 'bob');
+      expect(body['count'], 42);
+    });
+  });
+
+  group('Dependency injection via pipeline', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/pipeline-di', middleware: (r) async {
+            final role = r.read<String>();
+            return Response.ok(body: {'role': role});
+          }),
+        ],
+        pipelineBefore: Pipeline()
+          ..add((r) async {
+            r.provide<String>('superuser');
+            return null;
+          }),
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('pipeline middleware provides value to handler', () async {
+      final res = await client.get('/pipeline-di');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['role'], 'superuser');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // 4. Multipart form-data parsing
+  // ──────────────────────────────────────────────────────────────────
+
+  group('Multipart parsing (unit)', () {
+    test('parses text fields from multipart body', () {
+      const boundary = '----TestBoundary';
+      const body = '------TestBoundary\r\n'
+          'Content-Disposition: form-data; name="name"\r\n'
+          '\r\n'
+          'Sparky\r\n'
+          '------TestBoundary\r\n'
+          'Content-Disposition: form-data; name="version"\r\n'
+          '\r\n'
+          '2.1.0\r\n'
+          '------TestBoundary--\r\n';
+
+      final data = parseMultipart(
+        Uint8List.fromList(utf8.encode(body)),
+        boundary,
+      );
+
+      expect(data.fields['name'], 'Sparky');
+      expect(data.fields['version'], '2.1.0');
+      expect(data.files, isEmpty);
+      expect(data.fileList, isEmpty);
+    });
+
+    test('parses file uploads with binary content', () {
+      const boundary = '----TestBoundary';
+      // Create some binary content (non-UTF8-safe bytes)
+      final binaryContent = Uint8List.fromList([0, 1, 2, 255, 254, 253, 128]);
+      final bodyParts = <int>[
+        ...utf8.encode('------TestBoundary\r\n'),
+        ...utf8.encode(
+            'Content-Disposition: form-data; name="avatar"; filename="photo.png"\r\n'),
+        ...utf8.encode('Content-Type: image/png\r\n'),
+        ...utf8.encode('\r\n'),
+        ...binaryContent,
+        ...utf8.encode('\r\n'),
+        ...utf8.encode('------TestBoundary--\r\n'),
+      ];
+
+      final data = parseMultipart(Uint8List.fromList(bodyParts), boundary);
+
+      expect(data.files.containsKey('avatar'), isTrue);
+      final file = data.files['avatar']!;
+      expect(file.filename, 'photo.png');
+      expect(file.contentType, 'image/png');
+      expect(file.fieldName, 'avatar');
+      expect(file.bytes, binaryContent);
+      expect(file.size, binaryContent.length);
+    });
+
+    test('parses mixed fields and files', () {
+      const boundary = 'MixedBoundary';
+      const body = '--MixedBoundary\r\n'
+          'Content-Disposition: form-data; name="title"\r\n'
+          '\r\n'
+          'My Document\r\n'
+          '--MixedBoundary\r\n'
+          'Content-Disposition: form-data; name="file"; filename="doc.txt"\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          'Hello World\r\n'
+          '--MixedBoundary--\r\n';
+
+      final data = parseMultipart(
+        Uint8List.fromList(utf8.encode(body)),
+        boundary,
+      );
+
+      expect(data.fields['title'], 'My Document');
+      expect(data.files['file']?.filename, 'doc.txt');
+      expect(utf8.decode(data.files['file']!.bytes), 'Hello World');
+      expect(data.fileList.length, 1);
+    });
+
+    test('returns empty MultipartData for empty body', () {
+      final data = parseMultipart(Uint8List(0), 'boundary');
+      expect(data.fields, isEmpty);
+      expect(data.files, isEmpty);
+    });
+
+    test('extractBoundary extracts boundary from content-type', () {
+      expect(
+        extractBoundary('multipart/form-data; boundary=----WebKitFormBoundary'),
+        '----WebKitFormBoundary',
+      );
+    });
+
+    test('extractBoundary returns null for non-multipart', () {
+      expect(extractBoundary('application/json'), isNull);
+    });
+
+    test('extractBoundary returns null for null input', () {
+      expect(extractBoundary(null), isNull);
+    });
+
+    test('extractBoundary handles quoted boundary', () {
+      expect(
+        extractBoundary('multipart/form-data; boundary="my-boundary"'),
+        'my-boundary',
+      );
+    });
+
+    test('UploadedFile has correct size', () {
+      final file = UploadedFile(
+        fieldName: 'test',
+        filename: 'test.bin',
+        bytes: Uint8List.fromList([1, 2, 3, 4, 5]),
+      );
+      expect(file.size, 5);
+    });
+
+    test('MultipartData.empty returns empty data', () {
+      const data = MultipartData.empty();
+      expect(data.fields, isEmpty);
+      expect(data.files, isEmpty);
+      expect(data.fileList, isEmpty);
+    });
+  });
+
+  group('Multipart integration', () {
+    late SparkyTestClient client;
+    late int port;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.post('/upload', middleware: (r) async {
+            final form = await r.getMultipartData();
+            return Response.ok(body: {
+              'fields': form.fields,
+              'fileCount': form.fileList.length,
+              'fileNames': form.fileList.map((f) => f.filename).toList(),
+            });
+          }),
+        ],
+      );
+      port = client.port;
+    });
+
+    tearDown(() => client.close());
+
+    test('parses multipart form-data from real HTTP request', () async {
+      const body = '------TestBoundaryXYZ\r\n'
+          'Content-Disposition: form-data; name="name"\r\n'
+          '\r\n'
+          'Sparky\r\n'
+          '------TestBoundaryXYZ\r\n'
+          'Content-Disposition: form-data; name="file"; filename="test.txt"\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          'file content\r\n'
+          '------TestBoundaryXYZ--\r\n';
+
+      final httpClient = HttpClient();
+      final request = await httpClient.post('localhost', port, '/upload');
+      request.headers.set(
+          'content-type', 'multipart/form-data; boundary=----TestBoundaryXYZ');
+      request.add(utf8.encode(body));
+      final response = await request.close();
+      final responseBody = await utf8.decoder.bind(response).join();
+      httpClient.close();
+
+      expect(response.statusCode, 200);
+      final json = jsonDecode(responseBody) as Map<String, dynamic>;
+      final fields = json['fields'] as Map<String, dynamic>;
+      expect(fields['name'], 'Sparky');
+      expect(json['fileCount'], 1);
+      expect((json['fileNames'] as List).first, 'test.txt');
+    });
+
+    test('returns empty multipart data for non-multipart request', () async {
+      final httpClient = HttpClient();
+      final request = await httpClient.post('localhost', port, '/upload');
+      request.headers.contentType = ContentType.json;
+      request.write('{}');
+      final response = await request.close();
+      final responseBody = await utf8.decoder.bind(response).join();
+      httpClient.close();
+
+      expect(response.statusCode, 200);
+      final json = jsonDecode(responseBody) as Map<String, dynamic>;
+      expect(json['fileCount'], 0);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // 5. SSE / Streaming responses
+  // ──────────────────────────────────────────────────────────────────
+
+  group('SseEvent', () {
+    test('encodes data-only event', () {
+      const event = SseEvent(data: 'hello');
+      final encoded = event.encode();
+      expect(encoded, contains('data: hello'));
+      expect(encoded.endsWith('\n'), isTrue);
+    });
+
+    test('encodes event with type and id', () {
+      const event = SseEvent(data: 'payload', event: 'update', id: '42');
+      final encoded = event.encode();
+      expect(encoded, contains('id: 42'));
+      expect(encoded, contains('event: update'));
+      expect(encoded, contains('data: payload'));
+    });
+
+    test('encodes event with retry', () {
+      const event = SseEvent(data: 'retry-test', retry: 3000);
+      final encoded = event.encode();
+      expect(encoded, contains('retry: 3000'));
+      expect(encoded, contains('data: retry-test'));
+    });
+
+    test('encodes multi-line data with data: prefix per line', () {
+      const event = SseEvent(data: 'line1\nline2\nline3');
+      final encoded = event.encode();
+      expect(encoded, contains('data: line1'));
+      expect(encoded, contains('data: line2'));
+      expect(encoded, contains('data: line3'));
+    });
+  });
+
+  group('SSE integration', () {
+    late Sparky server;
+    late int port;
+
+    setUp(() async {
+      server = Sparky.server(
+        port: 0,
+        logConfig: LogConfig.none,
+        routes: [
+          RouteHttp.get('/events', middleware: (r) async {
+            final stream = Stream.fromIterable([
+              const SseEvent(data: 'one', id: '1'),
+              const SseEvent(data: 'two', id: '2', event: 'msg'),
+              const SseEvent(data: 'three', id: '3'),
+            ]);
+            return Response.sse(stream);
+          }),
+        ],
+      );
+      await server.ready;
+      port = server.actualPort;
+    });
+
+    tearDown(() => server.close());
+
+    test('SSE response has correct content-type and headers', () async {
+      final httpClient = HttpClient();
+      final request = await httpClient.get('localhost', port, '/events');
+      final response = await request.close();
+
+      expect(response.statusCode, 200);
+      expect(response.headers.contentType?.primaryType, 'text');
+      expect(response.headers.contentType?.subType, 'event-stream');
+
+      final body = await utf8.decoder.bind(response).join();
+      httpClient.close();
+
+      // Verify SSE format
+      expect(body, contains('data: one'));
+      expect(body, contains('id: 1'));
+      expect(body, contains('data: two'));
+      expect(body, contains('event: msg'));
+      expect(body, contains('data: three'));
+      expect(body, contains('id: 3'));
+    });
+
+    test('SSE has Cache-Control: no-cache header', () async {
+      final httpClient = HttpClient();
+      final request = await httpClient.get('localhost', port, '/events');
+      final response = await request.close();
+      await utf8.decoder.bind(response).join(); // drain
+
+      final cacheControl = response.headers.value('cache-control');
+      expect(cacheControl, 'no-cache');
+      httpClient.close();
+    });
+  });
+
+  group('Response.stream', () {
+    late Sparky server;
+    late int port;
+
+    setUp(() async {
+      server = Sparky.server(
+        port: 0,
+        logConfig: LogConfig.none,
+        routes: [
+          RouteHttp.get('/stream', middleware: (r) async {
+            final chunks = Stream.fromIterable([
+              utf8.encode('chunk1'),
+              utf8.encode('chunk2'),
+              utf8.encode('chunk3'),
+            ]);
+            return Response.stream(
+              body: chunks,
+              contentType: ContentType('text', 'plain'),
+            );
+          }),
+        ],
+      );
+      await server.ready;
+      port = server.actualPort;
+    });
+
+    tearDown(() => server.close());
+
+    test('streams body correctly', () async {
+      final httpClient = HttpClient();
+      final request = await httpClient.get('localhost', port, '/stream');
+      final response = await request.close();
+
+      expect(response.statusCode, 200);
+      final body = await utf8.decoder.bind(response).join();
+      httpClient.close();
+
+      expect(body, 'chunk1chunk2chunk3');
+    });
+
+    test('stream response has correct content-type', () async {
+      final httpClient = HttpClient();
+      final request = await httpClient.get('localhost', port, '/stream');
+      final response = await request.close();
+      await utf8.decoder.bind(response).join(); // drain
+
+      expect(response.headers.contentType?.primaryType, 'text');
+      expect(response.headers.contentType?.subType, 'plain');
+      httpClient.close();
+    });
+  });
+
+  group('Response stream properties', () {
+    test('isStream is true for stream-based body', () {
+      const resp = Response.stream(body: Stream<List<int>>.empty());
+      expect(resp.isStream, isTrue);
+    });
+
+    test('isStream is false for string body', () {
+      const resp = Response.ok(body: 'hello');
+      expect(resp.isStream, isFalse);
+    });
+
+    test('bodyStream returns stream when body is stream', () {
+      const resp = Response.stream(body: Stream<List<int>>.empty());
+      expect(resp.bodyStream, isNotNull);
+    });
+
+    test('bodyStream returns null for non-stream body', () {
+      const resp = Response.ok(body: 'hello');
+      expect(resp.bodyStream, isNull);
+    });
+
+    test('body throws StateError for stream body', () {
+      const resp = Response.stream(body: Stream<List<int>>.empty());
+      expect(() => resp.body, throwsA(isA<StateError>()));
+    });
+
+    test('bodyBytes throws StateError for stream body', () {
+      const resp = Response.stream(body: Stream<List<int>>.empty());
+      expect(() => resp.bodyBytes, throwsA(isA<StateError>()));
+    });
+
+    test('SSE response is a stream', () {
+      final resp = Response.sse(
+        Stream.fromIterable([const SseEvent(data: 'test')]),
+      );
+      expect(resp.isStream, isTrue);
+      expect(resp.status, HttpStatus.ok);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Security headers (already marked done, adding tests)
+  // ──────────────────────────────────────────────────────────────────
+
+  group('Security headers', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/secure',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+        pipelineBefore: Pipeline()
+          ..add(const SecurityHeadersConfig().createMiddleware()),
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('sets default security headers', () async {
+      final res = await client.get('/secure');
+      expect(res.statusCode, 200);
+      expect(res.headers.value('x-content-type-options'), isNotNull);
+      expect(res.headers.value('x-frame-options'), isNotNull);
     });
   });
 }

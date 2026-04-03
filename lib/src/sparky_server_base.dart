@@ -13,6 +13,7 @@ base class SparkyBase {
       {required this.routes,
       this.port = 8080,
       this.ip = '0.0.0.0',
+      this.shared = false,
       this.routeNotFound,
       this.logConfig = LogConfig.showAndWriteLogs,
       this.logType = LogType.all,
@@ -37,6 +38,7 @@ base class SparkyBase {
           ..maxEntries = cacheMaxEntries;
   final List<Route> routes;
   final int port;
+  final bool shared;
   final String ip, logFilePath;
   final Route? routeNotFound;
   final LogConfig logConfig;

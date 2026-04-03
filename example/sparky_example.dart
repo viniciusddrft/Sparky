@@ -1,13 +1,13 @@
 // @author viniciusddrft
-//
+
 // Sparky 2.1.0 — Example
-//
+
 // Each section below demonstrates one feature independently,
 // following the same order as the README.
 // Run: dart run example/sparky_example.dart
 
-import 'dart:io';
 import 'package:sparky/sparky.dart';
+import 'dart:io';
 
 void main() async {
   // ─────────────────────────────────────────────────────────────────────
@@ -236,12 +236,6 @@ void main() async {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// 11. Class-based route example
-// ─────────────────────────────────────────────────────────────────────────
 final class ExampleRoute extends Route {
-  ExampleRoute()
-      : super('/test', middleware: (request) async {
-          return const Response.ok(body: 'test');
-        }, acceptedMethods: [AcceptedMethods.get, AcceptedMethods.post]);
+  ExampleRoute() : super('example', middleware: null);
 }

@@ -1,15 +1,24 @@
 // @author viniciusddrft
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:sparky/src/sparky_server_base.dart';
 import 'package:sparky/src/types/sparky_types.dart';
+import 'errors/http_exception.dart';
 import 'errors/sparky_error.dart';
 import 'extensions/http_request.dart';
 import 'response/response.dart';
 import 'route/route_base.dart';
 
 part 'package:sparky/src/logs/logs.dart';
+
+/// Factory function for creating a Sparky server instance inside an isolate.
+///
+/// The [isolateIndex] identifies the isolate (0-based). The function must be
+/// a **top-level or static function** — closures cannot cross isolate boundaries.
+typedef SparkyFactory = FutureOr<Sparky> Function(int isolateIndex);
 
 /// Main logic file of Sparky's operation.
 
@@ -18,6 +27,7 @@ base class Sparky extends SparkyBase with Logs {
     required super.routes,
     super.port = 8080,
     super.ip = '0.0.0.0',
+    super.shared,
     super.routeNotFound,
     super.logConfig = LogConfig.showAndWriteLogs,
     super.logType = LogType.all,
@@ -92,8 +102,9 @@ base class Sparky extends SparkyBase with Logs {
 
   Future<void> _start() async {
     _server = securityContext != null
-        ? await HttpServer.bindSecure(ip, port, securityContext!)
-        : await HttpServer.bind(ip, port);
+        ? await HttpServer.bindSecure(ip, port, securityContext!,
+            shared: shared)
+        : await HttpServer.bind(ip, port, shared: shared);
 
     _openServerLog();
 
@@ -253,6 +264,16 @@ base class Sparky extends SparkyBase with Logs {
               ..write('{"errorCode":"408","message":"Request Timeout"}');
             await response.close();
           } catch (_) {}
+        } on HttpException catch (e) {
+          _errorServerLog('HTTP ${e.statusCode}: ${e.message} (${request.uri.path})');
+          try {
+            final response = request.response;
+            response
+              ..statusCode = e.statusCode
+              ..headers.contentType = ContentType.json
+              ..write(json.encode(e.toJson()));
+            await response.close();
+          } catch (_) {}
         } catch (e) {
           _errorServerLog(e);
           try {
@@ -298,12 +319,134 @@ base class Sparky extends SparkyBase with Logs {
         body: '{"errorCode":"404","message":"Not Found"}');
   }
 
+  /// Starts a cluster of Sparky servers sharing the same port across isolates.
+  ///
+  /// [factory] is a **top-level or static function** that creates a configured
+  /// [Sparky] instance. It is called once per isolate. The function receives
+  /// the isolate index (0-based) as a parameter. The server **must** be
+  /// created with `shared: true` for port sharing to work.
+  ///
+  /// [isolates] is the total number of server instances (including the main
+  /// isolate). Defaults to [Platform.numberOfProcessors].
+  ///
+  /// Returns a [SparkyCluster] that can be used to shut down all isolates.
+  ///
+  /// Example:
+  /// ```dart
+  /// Sparky createServer(int isolateIndex) {
+  ///   return Sparky.server(
+  ///     port: 8080,
+  ///     shared: true,
+  ///     routes: [...],
+  ///   );
+  /// }
+  ///
+  /// void main() async {
+  ///   final cluster = await Sparky.serve(createServer, isolates: 4);
+  ///   print('Listening on port ${cluster.port}');
+  /// }
+  /// ```
+  static Future<SparkyCluster> serve(
+    SparkyFactory factory, {
+    int? isolates,
+  }) async {
+    final isolateCount = isolates ?? Platform.numberOfProcessors;
+    assert(isolateCount >= 1, 'isolates must be >= 1');
+
+    final mainServer = await factory(0);
+    await mainServer.ready;
+
+    if (mainServer.port != 0 || isolateCount == 1) {
+      // All good — proceed
+    } else {
+      throw StateError(
+          'port: 0 is not supported with multiple isolates. '
+          'Use an explicit port when using Sparky.serve() with isolates > 1.');
+    }
+
+    final workerIsolates = <Isolate>[];
+    final shutdownPorts = <SendPort>[];
+
+    for (var i = 1; i < isolateCount; i++) {
+      final receivePort = ReceivePort();
+      final completer = Completer<SendPort>();
+
+      receivePort.listen((message) {
+        if (message is SendPort) {
+          completer.complete(message);
+          receivePort.close();
+        }
+      });
+
+      final isolate = await Isolate.spawn(
+        _isolateEntryPoint,
+        (factory, i, receivePort.sendPort),
+      );
+
+      final shutdownPort = await completer.future;
+      shutdownPorts.add(shutdownPort);
+      workerIsolates.add(isolate);
+    }
+
+    return SparkyCluster._(
+      isolates: workerIsolates,
+      shutdownPorts: shutdownPorts,
+      mainServer: mainServer,
+    );
+  }
+
   /// Gracefully shuts down the server.
   Future<void> close() async {
     await _subscription?.cancel();
     await _server.close();
     await _file?.flush();
     await _file?.close();
+  }
+}
+
+Future<void> _isolateEntryPoint(
+    (SparkyFactory, int, SendPort) config) async {
+  final (factory, index, mainSendPort) = config;
+  final shutdownPort = ReceivePort();
+  mainSendPort.send(shutdownPort.sendPort);
+
+  final server = await factory(index);
+  await server.ready;
+
+  // Wait for shutdown signal
+  await shutdownPort.first;
+  await server.close();
+}
+
+/// Represents a cluster of Sparky server instances running across isolates.
+///
+/// Returned by [Sparky.serve]. Use [close] to gracefully shut down
+/// all isolates.
+final class SparkyCluster {
+  final List<Isolate> _isolates;
+  final List<SendPort> _shutdownPorts;
+  final Sparky _mainServer;
+
+  SparkyCluster._({
+    required List<Isolate> isolates,
+    required List<SendPort> shutdownPorts,
+    required Sparky mainServer,
+  })  : _isolates = isolates,
+        _shutdownPorts = shutdownPorts,
+        _mainServer = mainServer;
+
+  /// The actual port the cluster is listening on.
+  int get port => _mainServer.actualPort;
+
+  /// Gracefully shuts down all isolates and the main server.
+  Future<void> close() async {
+    for (final port in _shutdownPorts) {
+      port.send(null);
+    }
+    for (final isolate in _isolates) {
+      isolate.kill();
+    }
+    await _mainServer.close();
   }
 }
 

@@ -1,0 +1,1 @@
+- [Architecture](project_architecture.md) -- Sparky framework patterns: base class chain, Expando extensions, final classes, module-per-directory

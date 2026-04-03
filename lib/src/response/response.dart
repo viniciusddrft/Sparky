@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:sparky/src/sse/sse.dart';
+
 /// This class handles responses, with some constructors already configured with request code.
 ///
 /// The [body] field accepts any [Object] (String, Map, List, etc.).
@@ -54,6 +56,59 @@ final class Response {
       this.contentType,
       this.headers, this.cookies})
       : status = statusCode,
+        _body = body;
+
+  /// Server-Sent Events (SSE) response.
+  ///
+  /// Converts a stream of [SseEvent]s into a properly formatted
+  /// `text/event-stream` response with `Cache-Control: no-cache`.
+  ///
+  /// ```dart
+  /// final events = Stream.periodic(
+  ///   const Duration(seconds: 1),
+  ///   (i) => SseEvent(data: 'tick $i', id: '$i'),
+  /// ).take(10);
+  /// return Response.sse(events);
+  /// ```
+  ///
+  /// See [SseEvent] for the event format.
+  Response.sse(
+    Stream<SseEvent> events, {
+    Map<String, String>? headers,
+    this.cookies,
+  })  : status = HttpStatus.ok,
+        contentType = ContentType('text', 'event-stream', charset: 'utf-8'),
+        headers = {
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          if (headers != null) ...headers,
+        },
+        _body = events
+            .map((event) => event.encode())
+            .map((text) => utf8.encode(text));
+
+  /// Streaming byte response.
+  ///
+  /// Use this for large file downloads, proxied responses, or any
+  /// scenario where the body should be piped without buffering.
+  ///
+  /// ```dart
+  /// final file = File('large-report.csv');
+  /// return Response.stream(
+  ///   body: file.openRead(),
+  ///   contentType: ContentType('text', 'csv'),
+  ///   headers: {
+  ///     'Content-Disposition': 'attachment; filename="report.csv"',
+  ///   },
+  /// );
+  /// ```
+  const Response.stream({
+    required Stream<List<int>> body,
+    int statusCode = HttpStatus.ok,
+    this.contentType,
+    this.headers,
+    this.cookies,
+  })  : status = statusCode,
         _body = body;
 
   /// Request Success
