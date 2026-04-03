@@ -35,7 +35,7 @@
 
 import 'dart:convert';
 import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:sparky/sparky.dart';
 
 /// A simplified HTTP response returned by [SparkyTestClient].
@@ -46,6 +46,9 @@ final class TestResponse {
   /// The response body as a string.
   final String body;
 
+  /// The raw response body as bytes.
+  final Uint8List bodyBytes;
+
   /// The response headers.
   final HttpHeaders headers;
 
@@ -55,6 +58,7 @@ final class TestResponse {
   const TestResponse({
     required this.statusCode,
     required this.body,
+    required this.bodyBytes,
     required this.headers,
     required this.cookies,
   });
@@ -211,8 +215,7 @@ final class SparkyTestClient {
     Map<String, String>? headers,
     ContentType? contentType,
   }) async {
-    final request =
-        await _client.open(method, 'localhost', port, path);
+    final request = await _client.open(method, 'localhost', port, path);
 
     // Apply headers
     if (headers != null) {
@@ -238,11 +241,17 @@ final class SparkyTestClient {
     }
 
     final response = await request.close();
-    final responseBody = await utf8.decoder.bind(response).join();
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in response) {
+      builder.add(chunk);
+    }
+    final responseBytes = builder.takeBytes();
+    final responseBody = utf8.decode(responseBytes, allowMalformed: true);
 
     return TestResponse(
       statusCode: response.statusCode,
       body: responseBody,
+      bodyBytes: responseBytes,
       headers: response.headers,
       cookies: response.cookies,
     );

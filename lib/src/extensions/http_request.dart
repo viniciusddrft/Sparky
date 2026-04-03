@@ -283,16 +283,16 @@ Future<Uint8List> _readRawBodyBytesWithLimit(HttpRequest request) async {
     return cached;
   }
 
-  final chunks = <int>[];
+  final builder = BytesBuilder(copy: false);
   var total = 0;
   await for (final chunk in request) {
     total += chunk.length;
     if (maxBytes != null && total > maxBytes) {
       throw BodyTooLargeException(maxBytes);
     }
-    chunks.addAll(chunk);
+    builder.add(chunk);
   }
-  final bytes = Uint8List.fromList(chunks);
+  final bytes = builder.takeBytes();
   _rawBodyBytesCache[request] = bytes;
   return bytes;
 }

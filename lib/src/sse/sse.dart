@@ -56,7 +56,7 @@ final class SseEvent {
     if (event != null) buffer.writeln('event: $event');
     if (retry != null) buffer.writeln('retry: $retry');
     // data field — each line must be prefixed with "data: "
-    for (final line in data.split('\n')) {
+    for (final line in data.split(RegExp(r'\r\n|\r|\n'))) {
       buffer.writeln('data: $line');
     }
     buffer.writeln(); // blank line terminates the event
