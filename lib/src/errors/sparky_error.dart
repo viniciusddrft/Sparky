@@ -29,13 +29,3 @@ final class RoutesRepeated implements SparkyError {
       'Exception: Sparky initialized with routes with repeated names';
 }
 
-/// An unexpected error that occurs after duplicate route validation.
-///
-/// This is a rare error that occurs if, after validating for duplicate routes,
-/// multiple routes or 'not found' errors remain unmapped. This indicates a logic
-/// flaw or unexpected state within Sparky's routing setup.
-final class SparkyUnexpectedError implements SparkyError {
-  @override
-  String toString() =>
-      'Exception: This is an unusual error; it occurs after the validation of duplicate routes. Multiple routes and not found are still unmapped errors.';
-}
