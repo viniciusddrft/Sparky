@@ -123,7 +123,7 @@ final class SparkyTestClient {
     Duration? cacheTtl,
     int? cacheMaxEntries,
   }) async {
-    final server = Sparky.server(
+    final server = Sparky.single(
       routes: routes,
       port: 0,
       logConfig: LogConfig.none,

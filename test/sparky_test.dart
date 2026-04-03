@@ -11,7 +11,7 @@ import 'package:sparky/testing.dart';
 
 /// Top-level factory for isolate tests (closures can't cross isolate boundaries).
 Sparky _createTestServer(int isolateIndex) {
-  return Sparky.server(
+  return Sparky.single(
     port: 4599,
     shared: true,
     logConfig: LogConfig.none,
@@ -30,7 +30,7 @@ void main() {
   group('Route validation', () {
     test('throws ErrorRouteEmpty when routes list is empty', () {
       expect(
-        () => Sparky.server(
+        () => Sparky.single(
           routes: [],
           logConfig: LogConfig.none,
         ),
@@ -40,7 +40,7 @@ void main() {
 
     test('throws RoutesRepeated when duplicate route names exist', () {
       expect(
-        () => Sparky.server(
+        () => Sparky.single(
           routes: [
             RouteHttp.get('/test',
                 middleware: (r) async => const Response.ok(body: 'a')),
@@ -298,7 +298,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/hello',
               middleware: (r) async => const Response.ok(body: '{"msg":"hi"}')),
@@ -584,7 +584,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/data',
               middleware: (r) async =>
@@ -633,7 +633,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/small',
               middleware: (r) async => const Response.ok(body: '{"ok":true}')),
@@ -685,7 +685,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/negotiation', middleware: (r) async {
             final type = r.preferredType(
@@ -770,7 +770,7 @@ void main() {
       await File('${tempDir.path}/app.js').writeAsString('console.log("ok");');
       await File('${tempDir.path}/logo.png').writeAsBytes([0, 1, 2, 3, 4]);
 
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/api/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
@@ -918,7 +918,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.post('/echo', middleware: (r) async {
             final body = await r.getRawBody();
@@ -978,7 +978,7 @@ void main() {
 
     test('respects cacheTtl for static routes', () async {
       var hits = 0;
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/cached', middleware: (r) async {
             hits++;
@@ -1010,7 +1010,7 @@ void main() {
         () async {
       var oneHits = 0;
       var twoHits = 0;
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/one', middleware: (r) async {
             oneHits++;
@@ -1045,7 +1045,7 @@ void main() {
 
     test('does not cache non-idempotent methods like POST', () async {
       var hits = 0;
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.post('/submit', middleware: (r) async {
             hits++;
@@ -1074,7 +1074,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/set-cookie', middleware: (r) async {
             final cookie = Cookie('session', 'abc123')
@@ -1127,7 +1127,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/limited',
               middleware: (r) async => const Response.ok(body: {'ok': true})),
@@ -1172,7 +1172,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/best', middleware: (r) async {
             final preferred = r.preferredType(
@@ -1247,7 +1247,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/text',
               middleware: (r) async =>
@@ -1293,7 +1293,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/slow', middleware: (r) async {
             await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -1333,7 +1333,7 @@ void main() {
 
   group('Graceful shutdown', () {
     test('server stops accepting connections after close', () async {
-      final server = Sparky.server(
+      final server = Sparky.single(
         routes: [
           RouteHttp.get('/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
@@ -1369,7 +1369,7 @@ void main() {
 
     setUp(() async {
       cancelledCompleter = Completer<bool>();
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/slow-check', middleware: (r) async {
             await Future<void>.delayed(const Duration(milliseconds: 150));
@@ -1412,7 +1412,7 @@ void main() {
 
     test('does not cache stream-based responses', () async {
       var hits = 0;
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/stream', middleware: (r) async {
             hits++;
@@ -1467,7 +1467,7 @@ void main() {
     });
 
     test('gzip-compresses text static file when client accepts gzip', () async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/api',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1498,7 +1498,7 @@ void main() {
     });
 
     test('does not gzip-compress binary static file', () async {
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/api',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1533,7 +1533,7 @@ void main() {
         allowOrigins: ['http://foo.com', 'http://bar.com'],
       );
       final pipeline = Pipeline()..add(cors.createMiddleware());
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1562,7 +1562,7 @@ void main() {
         allowOrigins: ['http://foo.com'],
       );
       final pipeline = Pipeline()..add(cors.createMiddleware());
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1586,7 +1586,7 @@ void main() {
     test('wildcard config returns * regardless of origin', () async {
       const cors = CorsConfig();
       final pipeline = Pipeline()..add(cors.createMiddleware());
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1614,7 +1614,7 @@ void main() {
         allowCredentials: true,
       );
       final pipeline = Pipeline()..add(cors.createMiddleware());
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1644,7 +1644,7 @@ void main() {
         allowCredentials: true,
       );
       final pipeline = Pipeline()..add(cors.createMiddleware());
-      server = Sparky.server(
+      server = Sparky.single(
         routes: [
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1673,7 +1673,7 @@ void main() {
 
   group('Shared server (single isolate)', () {
     test('server with shared: true works normally', () async {
-      final server = Sparky.server(
+      final server = Sparky.single(
         routes: [
           RouteHttp.get('/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
@@ -1697,7 +1697,7 @@ void main() {
 
   group('Sparky.serve (multi-isolate)', () {
     test('serves requests across isolates', () async {
-      final cluster = await Sparky.serve(_createTestServer, isolates: 2);
+      final cluster = await Sparky.cluster(_createTestServer, isolates: 2);
 
       final client = HttpClient();
       final request = await client.get('localhost', cluster.port, '/hello');
@@ -1710,12 +1710,12 @@ void main() {
     });
 
     test('cluster.close() frees the port', () async {
-      final cluster = await Sparky.serve(_createTestServer, isolates: 2);
+      final cluster = await Sparky.cluster(_createTestServer, isolates: 2);
       final port = cluster.port;
       await cluster.close();
 
       // Port should be free — bind a new server on it
-      final server = Sparky.server(
+      final server = Sparky.single(
         routes: [
           RouteHttp.get('/check',
               middleware: (r) async => const Response.ok(body: 'ok')),
@@ -1729,7 +1729,7 @@ void main() {
     });
 
     test('single isolate mode works (isolates: 1)', () async {
-      final cluster = await Sparky.serve(_createTestServer, isolates: 1);
+      final cluster = await Sparky.cluster(_createTestServer, isolates: 1);
 
       final client = HttpClient();
       final request = await client.get('localhost', cluster.port, '/hello');
@@ -1741,7 +1741,7 @@ void main() {
 
     test('throws when port: 0 with multiple isolates', () async {
       Sparky portZeroFactory(int index) {
-        return Sparky.server(
+        return Sparky.single(
           port: 0,
           shared: true,
           logConfig: LogConfig.none,
@@ -1753,7 +1753,7 @@ void main() {
       }
 
       await expectLater(
-        Sparky.serve(portZeroFactory, isolates: 2),
+        Sparky.cluster(portZeroFactory, isolates: 2),
         throwsA(isA<StateError>()),
       );
     });
@@ -1844,7 +1844,7 @@ void main() {
     });
 
     test('from() wraps an existing server', () async {
-      final server = Sparky.server(
+      final server = Sparky.single(
         port: 0,
         logConfig: LogConfig.none,
         routes: [
@@ -2408,7 +2408,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         port: 0,
         logConfig: LogConfig.none,
         routes: [
@@ -2466,7 +2466,7 @@ void main() {
     late int port;
 
     setUp(() async {
-      server = Sparky.server(
+      server = Sparky.single(
         port: 0,
         logConfig: LogConfig.none,
         routes: [

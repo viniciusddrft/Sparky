@@ -23,7 +23,11 @@ typedef SparkyFactory = FutureOr<Sparky> Function(int isolateIndex);
 /// Main logic file of Sparky's operation.
 
 base class Sparky extends SparkyBase with Logs {
-  Sparky.server({
+  /// Creates a single Sparky server instance in the current isolate.
+  /// 
+  /// Use this for standard deployments where you don't need multi-core
+  /// scaling via isolates. For cluster mode, use [Sparky.cluster].
+  Sparky.single({
     required super.routes,
     super.port = 8080,
     super.ip = '0.0.0.0',
@@ -334,7 +338,7 @@ base class Sparky extends SparkyBase with Logs {
   /// Example:
   /// ```dart
   /// Sparky createServer(int isolateIndex) {
-  ///   return Sparky.server(
+  ///   return Sparky.single(
   ///     port: 8080,
   ///     shared: true,
   ///     routes: [...],
@@ -342,11 +346,11 @@ base class Sparky extends SparkyBase with Logs {
   /// }
   ///
   /// void main() async {
-  ///   final cluster = await Sparky.serve(createServer, isolates: 4);
+  ///   final cluster = await Sparky.cluster(createServer, isolates: 4);
   ///   print('Listening on port ${cluster.port}');
   /// }
   /// ```
-  static Future<SparkyCluster> serve(
+  static Future<SparkyCluster> cluster(
     SparkyFactory factory, {
     int? isolates,
   }) async {
@@ -361,7 +365,7 @@ base class Sparky extends SparkyBase with Logs {
     } else {
       throw StateError(
           'port: 0 is not supported with multiple isolates. '
-          'Use an explicit port when using Sparky.serve() with isolates > 1.');
+          'Use an explicit port when using Sparky.cluster() with isolates > 1.');
     }
 
     final workerIsolates = <Isolate>[];
