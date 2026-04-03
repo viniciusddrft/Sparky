@@ -183,7 +183,7 @@ void main() async {
   // ─────────────────────────────────────────────────────────────────────
   // 17. Start the server with all features
   // ─────────────────────────────────────────────────────────────────────
-  final server = Sparky.server(
+  final server = Sparky.single(
     routes: [
       hello,
       userById,
