@@ -371,25 +371,53 @@ base class Sparky extends SparkyBase with Logs {
     final workerIsolates = <Isolate>[];
     final shutdownPorts = <SendPort>[];
 
-    for (var i = 1; i < isolateCount; i++) {
-      final receivePort = ReceivePort();
-      final completer = Completer<SendPort>();
+    try {
+      for (var i = 1; i < isolateCount; i++) {
+        final receivePort = ReceivePort();
+        final completer = Completer<SendPort>();
 
-      receivePort.listen((message) {
-        if (message is SendPort) {
-          completer.complete(message);
-          receivePort.close();
-        }
-      });
+        receivePort.listen((message) {
+          if (message is SendPort) {
+            completer.complete(message);
+          } else if (message is List && message.length == 2) {
+            // Error from worker isolate: [error, stackTrace]
+            receivePort.close();
+            if (!completer.isCompleted) {
+              completer.completeError(
+                StateError('Worker isolate $i failed: ${message[0]}'),
+              );
+            }
+          }
+        });
 
-      final isolate = await Isolate.spawn(
-        _isolateEntryPoint,
-        (factory, i, receivePort.sendPort),
-      );
+        final isolate = await Isolate.spawn(
+          _isolateEntryPoint,
+          (factory, i, receivePort.sendPort),
+          onError: receivePort.sendPort,
+        );
 
-      final shutdownPort = await completer.future;
-      shutdownPorts.add(shutdownPort);
-      workerIsolates.add(isolate);
+        final shutdownPort = await completer.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            receivePort.close();
+            isolate.kill(priority: Isolate.immediate);
+            throw TimeoutException(
+              'Worker isolate $i failed to start within 10 seconds',
+            );
+          },
+        );
+
+        shutdownPorts.add(shutdownPort);
+        workerIsolates.add(isolate);
+      }
+    } catch (e) {
+      // Rollback: kill all already-spawned isolates and close main server
+      for (var j = 0; j < workerIsolates.length; j++) {
+        shutdownPorts[j].send(null);
+        workerIsolates[j].kill(priority: Isolate.immediate);
+      }
+      await mainServer.close();
+      rethrow;
     }
 
     return SparkyCluster._(
@@ -412,13 +440,16 @@ Future<void> _isolateEntryPoint(
     (SparkyFactory, int, SendPort) config) async {
   final (factory, index, mainSendPort) = config;
   final shutdownPort = ReceivePort();
-  mainSendPort.send(shutdownPort.sendPort);
 
   final server = await factory(index);
   await server.ready;
 
+  // Send the shutdown port only after successful startup
+  mainSendPort.send(shutdownPort.sendPort);
+
   // Wait for shutdown signal
   await shutdownPort.first;
+  shutdownPort.close();
   await server.close();
 }
 
@@ -443,13 +474,28 @@ final class SparkyCluster {
   int get port => _mainServer.actualPort;
 
   /// Gracefully shuts down all isolates and the main server.
+  ///
+  /// Sends a shutdown signal to each worker and waits up to 5 seconds
+  /// for graceful termination before force-killing.
   Future<void> close() async {
-    for (final port in _shutdownPorts) {
-      port.send(null);
+    final exitFutures = <Future<void>>[];
+
+    for (var i = 0; i < _isolates.length; i++) {
+      final exitPort = ReceivePort();
+      _isolates[i].addOnExitListener(exitPort.sendPort);
+      _shutdownPorts[i].send(null);
+
+      exitFutures.add(
+        exitPort.first.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            _isolates[i].kill(priority: Isolate.immediate);
+          },
+        ).whenComplete(exitPort.close),
+      );
     }
-    for (final isolate in _isolates) {
-      isolate.kill();
-    }
+
+    await Future.wait(exitFutures);
     await _mainServer.close();
   }
 }

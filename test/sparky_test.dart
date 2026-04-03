@@ -9,6 +9,22 @@ import 'package:test/test.dart' hide isList, isMap, matches;
 import 'package:sparky/sparky.dart';
 import 'package:sparky/testing.dart';
 
+/// Top-level factory that throws on isolate index 1 (for error rollback tests).
+Sparky _failingOnSecondIsolate(int isolateIndex) {
+  if (isolateIndex == 1) {
+    throw StateError('Simulated factory failure on isolate 1');
+  }
+  return Sparky.single(
+    port: 4598,
+    shared: true,
+    logConfig: LogConfig.none,
+    routes: [
+      RouteHttp.get('/test',
+          middleware: (r) async => const Response.ok(body: 'ok')),
+    ],
+  );
+}
+
 /// Top-level factory for isolate tests (closures can't cross isolate boundaries).
 Sparky _createTestServer(int isolateIndex) {
   return Sparky.single(
@@ -1757,6 +1773,61 @@ void main() {
         throwsA(isA<StateError>()),
       );
     });
+
+    test('rollback on factory error cleans up already-spawned isolates',
+        () async {
+      // Worker factory throws on index 1 — the error is reported via
+      // onError and the cluster should rollback, freeing the port.
+      await expectLater(
+        Sparky.cluster(_failingOnSecondIsolate, isolates: 3),
+        throwsA(anything),
+      );
+
+      // Port should be free after rollback
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final server = Sparky.single(
+        port: 4598,
+        logConfig: LogConfig.none,
+        routes: [
+          RouteHttp.get('/check',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+      );
+      await server.ready;
+      expect(server.actualPort, 4598);
+      await server.close();
+    });
+
+    test('graceful shutdown waits for workers before returning', () async {
+      final cluster = await Sparky.cluster(_createTestServer, isolates: 2);
+      final port = cluster.port;
+
+      // Verify cluster is serving
+      final client = HttpClient();
+      final request = await client.get('localhost', port, '/hello');
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.ok);
+      client.close();
+
+      // Graceful shutdown should complete without hanging
+      await cluster.close().timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => fail('Shutdown timed out — workers may be hanging'),
+          );
+
+      // Port should be free after graceful shutdown
+      final server = Sparky.single(
+        port: port,
+        logConfig: LogConfig.none,
+        routes: [
+          RouteHttp.get('/check',
+              middleware: (r) async => const Response.ok(body: 'ok')),
+        ],
+      );
+      await server.ready;
+      expect(server.actualPort, port);
+      await server.close();
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════
@@ -2147,6 +2218,75 @@ void main() {
     });
   });
 
+  group('Dependency injection edge cases', () {
+    late SparkyTestClient client;
+
+    setUp(() async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/di-override', middleware: (r) async {
+            final value = r.read<String>();
+            return Response.ok(body: {'value': value});
+          }, guards: [
+            (r) async {
+              r.provide<String>('first');
+              r.provide<String>('second');
+              return null;
+            }
+          ]),
+          RouteHttp.get('/di-generics', middleware: (r) async {
+            final strings = r.read<List<String>>();
+            final ints = r.read<List<int>>();
+            return Response.ok(body: {
+              'strings': strings,
+              'ints': ints,
+            });
+          }, guards: [
+            (r) async {
+              r.provide<List<String>>(['a', 'b']);
+              r.provide<List<int>>([1, 2]);
+              return null;
+            }
+          ]),
+          RouteHttp.get('/di-tryread-after-provide', middleware: (r) async {
+            final before = r.tryRead<int>();
+            r.provide<int>(99);
+            final after = r.tryRead<int>();
+            return Response.ok(body: {
+              'before': before,
+              'after': after,
+            });
+          }),
+        ],
+      );
+    });
+
+    tearDown(() => client.close());
+
+    test('override same type keeps last value', () async {
+      final res = await client.get('/di-override');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['value'], 'second');
+    });
+
+    test('generic types are stored independently', () async {
+      final res = await client.get('/di-generics');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['strings'], ['a', 'b']);
+      expect(body['ints'], [1, 2]);
+    });
+
+    test('tryRead returns null before provide and value after', () async {
+      final res = await client.get('/di-tryread-after-provide');
+      expect(res.statusCode, 200);
+      final body = res.jsonBody as Map<String, dynamic>;
+      expect(body['before'], isNull);
+      expect(body['after'], 99);
+    });
+  });
+
   group('Dependency injection via pipeline', () {
     late SparkyTestClient client;
 
@@ -2298,6 +2438,127 @@ void main() {
       expect(data.fields, isEmpty);
       expect(data.files, isEmpty);
       expect(data.fileList, isEmpty);
+    });
+
+    test('parses unquoted header parameters', () async {
+      const boundary = 'UnquotedBoundary';
+      const body = '--UnquotedBoundary\r\n'
+          'Content-Disposition: form-data; name=username\r\n'
+          '\r\n'
+          'sparky\r\n'
+          '--UnquotedBoundary\r\n'
+          'Content-Disposition: form-data; name=avatar; filename=photo.jpg\r\n'
+          'Content-Type: image/jpeg\r\n'
+          '\r\n'
+          'jpeg-data\r\n'
+          '--UnquotedBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      expect(data.fields['username'], 'sparky');
+      expect(data.files['avatar']?.filename, 'photo.jpg');
+    });
+
+    test('parses mixed quoted and unquoted parameters', () async {
+      const boundary = 'MixBoundary';
+      const body = '--MixBoundary\r\n'
+          'Content-Disposition: form-data; name="title"; filename=report.pdf\r\n'
+          'Content-Type: application/pdf\r\n'
+          '\r\n'
+          'pdf-bytes\r\n'
+          '--MixBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      expect(data.files['title']?.filename, 'report.pdf');
+    });
+
+    test('skips parts without Content-Disposition', () async {
+      const boundary = 'SkipBoundary';
+      const body = '--SkipBoundary\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          'orphan data\r\n'
+          '--SkipBoundary\r\n'
+          'Content-Disposition: form-data; name="valid"\r\n'
+          '\r\n'
+          'ok\r\n'
+          '--SkipBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      expect(data.fields.length, 1);
+      expect(data.fields['valid'], 'ok');
+    });
+
+    test('handles empty file upload', () async {
+      const boundary = 'EmptyFileBoundary';
+      const body = '--EmptyFileBoundary\r\n'
+          'Content-Disposition: form-data; name="doc"; filename="empty.txt"\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          '\r\n'
+          '--EmptyFileBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      expect(data.files['doc']?.filename, 'empty.txt');
+      expect(data.files['doc']?.bytes.length, 0);
+    });
+
+    test('multiple files with same field name keeps last in map', () async {
+      const boundary = 'DupBoundary';
+      const body = '--DupBoundary\r\n'
+          'Content-Disposition: form-data; name="file"; filename="a.txt"\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          'aaa\r\n'
+          '--DupBoundary\r\n'
+          'Content-Disposition: form-data; name="file"; filename="b.txt"\r\n'
+          'Content-Type: text/plain\r\n'
+          '\r\n'
+          'bbb\r\n'
+          '--DupBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      // Map keeps last, fileList keeps all
+      expect(data.files['file']?.filename, 'b.txt');
+      expect(data.fileList.length, 2);
+      expect(data.fileList[0].filename, 'a.txt');
+      expect(data.fileList[1].filename, 'b.txt');
+    });
+
+    test('handles fields with special characters in values', () async {
+      const boundary = 'SpecialBoundary';
+      const body = '--SpecialBoundary\r\n'
+          'Content-Disposition: form-data; name="bio"\r\n'
+          '\r\n'
+          'Line1\r\nLine2\r\némojis: 🎉\r\n'
+          '--SpecialBoundary--\r\n';
+
+      final data = await MultipartParser(
+        Stream.value(Uint8List.fromList(utf8.encode(body))),
+        boundary,
+      ).parse();
+
+      expect(data.fields['bio'], contains('Line1'));
+      expect(data.fields['bio'], contains('🎉'));
     });
   });
 

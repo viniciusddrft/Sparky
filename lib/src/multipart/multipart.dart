@@ -247,10 +247,17 @@ Map<String, String> _parsePartHeaders(String headerSection) {
 
 /// Extracts a named parameter from a header value.
 ///
-/// E.g. from `form-data; name="file"; filename="photo.jpg"`
-/// `_extractHeaderParam(value, 'filename')` returns `photo.jpg`.
+/// Supports both quoted and unquoted values per RFC 2046:
+/// - `name="photo.jpg"` → `photo.jpg`
+/// - `name=photo.jpg`   → `photo.jpg`
 String? _extractHeaderParam(String headerValue, String paramName) {
-  final regex = RegExp('$paramName="([^"]*)"');
-  final match = regex.firstMatch(headerValue);
-  return match?.group(1);
+  // Try quoted value first: paramName="value"
+  final quoted = RegExp('$paramName="([^"]*)"');
+  final quotedMatch = quoted.firstMatch(headerValue);
+  if (quotedMatch != null) return quotedMatch.group(1);
+
+  // Fallback to unquoted value: paramName=value (token until ; or end)
+  final unquoted = RegExp('$paramName=([^;\\s]+)');
+  final unquotedMatch = unquoted.firstMatch(headerValue);
+  return unquotedMatch?.group(1);
 }

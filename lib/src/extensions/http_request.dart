@@ -110,6 +110,10 @@ extension RequestTools on HttpRequest {
   /// Use this in guards or pipeline middlewares to inject dependencies
   /// that downstream handlers can access via [read].
   ///
+  /// If a value of the same type was already provided, it will be
+  /// silently overwritten. Use [tryRead] first if you need to check
+  /// whether a value already exists.
+  ///
   /// ```dart
   /// // In a guard:
   /// Future<Response?> authGuard(HttpRequest request) async {
