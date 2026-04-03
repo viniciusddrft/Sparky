@@ -27,6 +27,13 @@ Sparky é um pacote Dart para construção de APIs REST de forma simples, com su
 - Helpers de content negotiation e cookies
 - Validação de request body (`Validator`)
 - HTTPS/TLS nativo via `SecurityContext`
+- Upload de arquivos com parser multipart robusto (binary-safe)
+- Server-Sent Events (SSE) e streaming de responses
+- Tratamento de erros estruturado com exceções tipadas (`NotFound`, `BadRequest`, `Forbidden`, etc.)
+- Dependency injection por request (`provide<T>` / `read<T>` / `tryRead<T>`)
+- Multi-isolate com `Sparky.cluster()` para escalar em múltiplos cores
+- Security headers (Helmet-style) com `SecurityHeadersConfig`
+- Test utilities com `SparkyTestClient`
 
 ## Como Usar
 
@@ -41,7 +48,7 @@ void main() {
     return const Response.ok(body: 'Olá mundo');
   });
 
-  Sparky.server(routes: [route1]);
+  Sparky.single(routes: [route1]);
 }
 ```
 
@@ -73,7 +80,7 @@ final apiRoutes = RouteGroup('/api/v1', routes: [
   RouteHttp.get('/products', middleware: (r) async => const Response.ok(body: {'products': []})),
 ]);
 
-Sparky.server(routes: [
+Sparky.single(routes: [
   ...apiRoutes.flatten(), // gera /api/v1/users e /api/v1/products
 ]);
 ```
@@ -101,7 +108,7 @@ final class RouteSocket extends Route {
 }
 
 void main() {
-  Sparky.server(routes: [RouteTest(), RouteSocket()]);
+  Sparky.single(routes: [RouteTest(), RouteSocket()]);
 }
 ```
 
@@ -125,10 +132,31 @@ final route = RouteHttp.post('/submit', middleware: (request) async {
   // URL-encoded (application/x-www-form-urlencoded)
   final form = await request.getFormData();
 
-  // Multipart form-data
-  final multipart = await request.getBodyParams();
-
   return Response.ok(body: {'received': json});
+});
+```
+
+### Upload de arquivos (multipart/form-data)
+
+Parser robusto que opera em bytes brutos (binary-safe). Suporta múltiplos arquivos e campos texto.
+
+```dart
+final upload = RouteHttp.post('/upload', middleware: (request) async {
+  final form = await request.getMultipartData();
+
+  // Campos texto
+  final description = form.fields['description'];
+
+  // Arquivos
+  for (final file in form.fileList) {
+    print('${file.filename} (${file.size} bytes, ${file.contentType})');
+    // file.bytes contém o Uint8List com os dados binários
+  }
+
+  // Ou acesse por nome do campo
+  final avatar = form.files['avatar'];
+
+  return Response.ok(body: {'filesReceived': form.fileList.length});
 });
 ```
 
@@ -185,7 +213,7 @@ final route = RouteHttp.get('/admin',
 ### Como personalizar o ip e porta
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   ip: '0.0.0.0',
   port: 8080,
@@ -197,7 +225,7 @@ Sparky.server(
 Você pode adicionar N middlewares nas pipelines.
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   pipelineBefore: Pipeline()
     ..add((request) async {
@@ -225,7 +253,7 @@ const cors = CorsConfig(
 const corsWithCreds = CorsConfig(allowCredentials: true);
 
 // Ou use CorsConfig.permissive() para desenvolvimento
-Sparky.server(
+Sparky.single(
   routes: [...],
   pipelineBefore: Pipeline()
     ..add(cors.createMiddleware()),
@@ -237,7 +265,7 @@ Sparky.server(
 Por padrão mostra e salva logs. Você pode configurar o tipo, o modo e o caminho do arquivo.
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   logConfig: LogConfig.showAndWriteLogs,
   logType: LogType.all,
@@ -259,7 +287,7 @@ final websocket = RouteWebSocket(
   },
 );
 
-Sparky.server(routes: [websocket]);
+Sparky.single(routes: [websocket]);
 ```
 
 ### Autenticação JWT com expiração
@@ -278,7 +306,7 @@ final login = RouteHttp.post('/login', middleware: (request) async {
   return Response.ok(body: {'token': token});
 });
 
-Sparky.server(
+Sparky.single(
   routes: [login],
   pipelineBefore: Pipeline()
     ..add((request) async {
@@ -308,7 +336,7 @@ final random = RouteHttp.get('/random', middleware: (request) async {
   return Response.ok(body: {'value': value});
 });
 
-Sparky.server(
+Sparky.single(
   routes: [random],
   pipelineBefore: Pipeline()
     ..add((request) async {
@@ -321,7 +349,7 @@ Sparky.server(
 Você também pode configurar TTL e limite máximo de entradas:
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   cacheTtl: const Duration(seconds: 30),
   cacheMaxEntries: 500,
@@ -331,7 +359,7 @@ Sparky.server(
 ### Limite de body e timeout
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   maxBodySize: 10 * 1024 * 1024, // 10 MB
   requestTimeout: const Duration(seconds: 10),
@@ -341,7 +369,7 @@ Sparky.server(
 ### Servir arquivos estáticos
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   pipelineBefore: Pipeline()
     ..add(
@@ -357,7 +385,7 @@ Sparky.server(
 ### Gzip
 
 ```dart
-Sparky.server(
+Sparky.single(
   routes: [...],
   enableGzip: true,
   gzipMinLength: 1024,
@@ -373,7 +401,7 @@ final limiter = RateLimiter(
   trustProxyHeaders: true, // use apenas atrás de proxy confiável
 );
 
-Sparky.server(
+Sparky.single(
   routes: [...],
   pipelineBefore: Pipeline()..add(limiter.createMiddleware()),
 );
@@ -411,16 +439,152 @@ final context = SecurityContext()
   ..useCertificateChain('cert.pem')
   ..usePrivateKey('key.pem');
 
-Sparky.server(
+Sparky.single(
   routes: [...],
   securityContext: context,
 );
 ```
 
+### Server-Sent Events (SSE)
+
+```dart
+final sse = RouteHttp.get('/events', middleware: (request) async {
+  final events = Stream.periodic(
+    const Duration(seconds: 1),
+    (i) => SseEvent(data: 'tick ${i + 1}', id: '${i + 1}', event: 'tick'),
+  ).take(10);
+  return Response.sse(events);
+});
+```
+
+Para streaming de arquivos grandes ou downloads:
+
+```dart
+final download = RouteHttp.get('/download-csv', middleware: (request) async {
+  final file = File('report.csv');
+  return Response.stream(
+    body: file.openRead(),
+    contentType: ContentType('text', 'csv'),
+    headers: {'Content-Disposition': 'attachment; filename="report.csv"'},
+  );
+});
+```
+
+### Tratamento de erros estruturado
+
+Exceções tipadas que mapeiam automaticamente para HTTP status codes com body JSON padronizado.
+
+```dart
+RouteHttp.get('/users/:id', middleware: (request) async {
+  final id = request.pathParams['id'];
+  final user = await findUser(id);
+
+  if (user == null) {
+    throw NotFound(message: 'Usuário não encontrado', details: {'id': id!});
+    // Retorna 404 com {"errorCode": "404", "message": "Usuário não encontrado", "id": "..."}
+  }
+
+  return Response.ok(body: user);
+});
+```
+
+Exceções disponíveis: `BadRequest` (400), `Unauthorized` (401), `Forbidden` (403), `NotFound` (404), `MethodNotAllowed` (405), `Conflict` (409), `UnprocessableEntity` (422), `TooManyRequests` (429), `InternalServerError` (500), `BadGateway` (502), `ServiceUnavailable` (503).
+
+### Dependency injection por request
+
+Injete dependências em guards/middlewares e consuma em handlers.
+
+```dart
+Future<Response?> authGuard(HttpRequest request) async {
+  final user = await authenticate(request);
+  if (user == null) return const Response.unauthorized(body: 'Denied');
+  request.provide<User>(user); // injeta no request
+  return null;
+}
+
+RouteHttp.get('/profile',
+  middleware: (request) async {
+    final user = request.read<User>();        // lança se não existir
+    final config = request.tryRead<Config>(); // retorna null se não existir
+    return Response.ok(body: {'name': user.name});
+  },
+  guards: [authGuard],
+);
+```
+
+### Security headers (Helmet-style)
+
+Adiciona headers de segurança padrão com uma única linha no pipeline.
+
+```dart
+Sparky.single(
+  routes: [...],
+  pipelineBefore: Pipeline()
+    ..add(SecurityHeadersConfig().createMiddleware()),
+);
+```
+
+Headers aplicados por padrão: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Content-Security-Policy: default-src 'self'`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, entre outros. Cada header é configurável individualmente:
+
+```dart
+const headers = SecurityHeadersConfig(
+  xFrameOptions: 'SAMEORIGIN',
+  contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'",
+  strictTransportSecurity: null, // omite o header
+);
+```
+
+### Multi-isolate (cluster mode)
+
+Escale o servidor em múltiplos cores da CPU.
+
+```dart
+// Factory DEVE ser função top-level ou estática
+Sparky createServer(int isolateIndex) {
+  return Sparky.single(
+    port: 3000,
+    shared: true, // obrigatório para cluster
+    routes: [...],
+  );
+}
+
+void main() async {
+  final cluster = await Sparky.cluster(createServer, isolates: 4);
+  print('Rodando na porta ${cluster.port} com 4 isolates');
+
+  // Para encerrar:
+  await cluster.close();
+}
+```
+
+### Test utilities
+
+`SparkyTestClient` boota o servidor numa porta OS-assigned para testes sem colisão de porta.
+
+```dart
+import 'package:sparky/testing.dart';
+import 'package:test/test.dart';
+
+void main() {
+  late SparkyTestClient client;
+
+  setUp(() {
+    client = SparkyTestClient(routes: [myRoute]);
+  });
+
+  tearDown(() => client.close());
+
+  test('GET /hello returns 200', () async {
+    final response = await client.get('/hello');
+    expect(response.statusCode, 200);
+  });
+}
+```
+
 ### Graceful shutdown
 
 ```dart
-final server = Sparky.server(routes: [...]);
+final server = Sparky.single(routes: [...]);
 await server.ready; // aguarda o servidor estar pronto
 
 // Quando quiser parar:

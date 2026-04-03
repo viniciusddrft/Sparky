@@ -1,12 +1,13 @@
 // @author viniciusddrft
 
-// Sparky 2.1.0 — Example
-
+// Sparky — Full Example
+//
 // Each section below demonstrates one feature independently,
 // following the same order as the README.
 // Run: dart run example/sparky_example.dart
 
 import 'package:sparky/sparky.dart';
+import 'dart:async';
 import 'dart:io';
 
 void main() async {
@@ -181,7 +182,83 @@ void main() async {
   );
 
   // ─────────────────────────────────────────────────────────────────────
-  // 17. Start the server with all features
+  // 17. Multipart upload (binary-safe file upload)
+  // ─────────────────────────────────────────────────────────────────────
+  final upload = RouteHttp.post('/upload', middleware: (request) async {
+    final form = await request.getMultipartData();
+    final description = form.fields['description'] ?? 'no description';
+    final files = form.fileList
+        .map((f) => {
+              'name': f.filename,
+              'size': f.size,
+              'contentType': f.contentType,
+            })
+        .toList();
+    return Response.ok(body: {
+      'description': description,
+      'filesReceived': files.length,
+      'files': files,
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 18. SSE — Server-Sent Events
+  // ─────────────────────────────────────────────────────────────────────
+  final sse = RouteHttp.get('/events', middleware: (request) async {
+    final events = Stream.periodic(
+      const Duration(seconds: 1),
+      (i) => SseEvent(data: 'tick ${i + 1}', id: '${i + 1}', event: 'tick'),
+    ).take(5);
+    return Response.sse(events);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 19. Structured error handling (typed HTTP exceptions)
+  // ─────────────────────────────────────────────────────────────────────
+  final itemRoute = RouteHttp.get('/items/:id', middleware: (request) async {
+    final id = request.pathParams['id'];
+    switch (id) {
+      case '0':
+        throw NotFound(message: 'Item not found', details: {'id': id!});
+      case '-1':
+        throw const Forbidden(message: 'Access denied to this item');
+      case 'x':
+        throw const BadRequest(message: 'Invalid item ID format');
+      default:
+        return Response.ok(body: {'id': id, 'name': 'Item $id'});
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 20. Dependency injection per request
+  // ─────────────────────────────────────────────────────────────────────
+  Future<Response?> diGuard(HttpRequest request) async {
+    final token = request.headers.value('Authorization');
+    if (token == null || !authJwt.verifyToken(token)) {
+      return const Response.unauthorized(body: {'error': 'Unauthorized'});
+    }
+    // Inject an AppUser into the request — available downstream
+    request.provide<AppUser>(const AppUser(name: 'Vinicius', role: 'admin'));
+    return null;
+  }
+
+  final profile = RouteHttp.get('/profile', middleware: (request) async {
+    final user = request.read<AppUser>();
+    final maybeConfig = request.tryRead<String>(); // null — not provided
+    return Response.ok(body: {
+      'name': user.name,
+      'role': user.role,
+      'hasConfig': maybeConfig != null,
+    });
+  }, guards: [diGuard]);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 21. Security headers (Helmet-style)
+  // ─────────────────────────────────────────────────────────────────────
+  const securityHeaders = SecurityHeadersConfig();
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 22. Start the server with all features
   // ─────────────────────────────────────────────────────────────────────
   final server = Sparky.single(
     routes: [
@@ -198,13 +275,18 @@ void main() async {
       negotiate,
       setCookie,
       readCookie,
+      upload,
+      sse,
+      itemRoute,
+      profile,
       ...apiRoutes.flatten(),
     ],
     port: 3000,
-    // Pipelines — CORS, rate limit, static files
+    // Pipelines — CORS, rate limit, security headers, static files
     pipelineBefore: Pipeline()
       ..add(cors.createMiddleware())
       ..add(limiter.createMiddleware())
+      ..add(securityHeaders.createMiddleware())
       ..add(staticFiles.createMiddleware()),
     // Logging
     logConfig: LogConfig.showLogs,
@@ -224,7 +306,7 @@ void main() async {
   );
 
   // ─────────────────────────────────────────────────────────────────────
-  // 18. Graceful shutdown
+  // 23. Graceful shutdown
   // ─────────────────────────────────────────────────────────────────────
   await server.ready;
   print('Sparky running on http://127.0.0.1:${server.actualPort}');
@@ -234,6 +316,28 @@ void main() async {
     await server.close();
     exit(0);
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // NOTE: Isolates / cluster mode
+  // ─────────────────────────────────────────────────────────────────────
+  // To scale across CPU cores, use Sparky.cluster with a top-level factory:
+  //
+  //   Sparky createServer(int isolateIndex) {
+  //     return Sparky.single(port: 3000, shared: true, routes: [...]);
+  //   }
+  //
+  //   void main() async {
+  //     final cluster = await Sparky.cluster(createServer, isolates: 4);
+  //     print('Running on ${cluster.port} with 4 isolates');
+  //     // cluster.close() to shutdown all isolates
+  //   }
+}
+
+// ─── Helper class for DI demo ────────────────────────────────────────
+final class AppUser {
+  final String name;
+  final String role;
+  const AppUser({required this.name, required this.role});
 }
 
 final class ExampleRoute extends Route {

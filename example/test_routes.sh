@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sparky 2.1.0 — Test all example routes
+# Sparky — Test all example routes
 # Usage:
 #   1. dart run example/sparky_example.dart
 #   2. ./example/test_routes.sh
@@ -152,6 +152,49 @@ echo ""
 # ─────────────────────────────────────────────────────────────────────
 sep "17. 405 — POST /hello (only GET allowed)"
 curl -s -X POST "$BASE/hello"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "18. Multipart upload — POST /upload"
+curl -s -X POST "$BASE/upload" \
+  -F "description=My avatar" \
+  -F "avatar=@/dev/null;filename=photo.png;type=image/png"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "19. SSE — GET /events (first 5 events, 3s timeout)"
+curl -s -N --max-time 3 "$BASE/events" 2>/dev/null || true
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "20a. Structured errors — GET /items/42 (200 OK)"
+curl -s "$BASE/items/42"
+echo ""
+
+sep "20b. Structured errors — GET /items/0 (404 NotFound)"
+curl -s "$BASE/items/0"
+echo ""
+
+sep "20c. Structured errors — GET /items/-1 (403 Forbidden)"
+curl -s "$BASE/items/-1"
+echo ""
+
+sep "20d. Structured errors — GET /items/x (400 BadRequest)"
+curl -s "$BASE/items/x"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "21a. Dependency injection — GET /profile (without token = 401)"
+curl -s "$BASE/profile"
+echo ""
+
+sep "21b. Dependency injection — GET /profile (with token = injected user)"
+curl -s "$BASE/profile" -H "Authorization: $TOKEN"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "22. Security headers — check headers on GET /hello"
+curl -s -i "$BASE/hello" | grep -iE "x-frame-options|content-security-policy|referrer-policy|x-content-type-options|strict-transport|x-xss-protection|cross-origin"
 echo ""
 
 echo ""

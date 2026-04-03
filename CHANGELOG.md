@@ -1,3 +1,21 @@
+# 2.2.0
+
+### Novas Funcionalidades
+
+- **Parser multipart robusto**: Parsing real de `multipart/form-data` com suporte a upload de arquivos binários. `request.getMultipartData()` retorna `MultipartData` com `fields` (Map<String, String>) e `files`/`fileList` (Map/List de `UploadedFile`). Parser opera em bytes brutos (binary-safe). `UploadedFile` expõe `filename`, `bytes`, `contentType` e `size`.
+- **Streaming de response (SSE)**: `Response.sse(stream)` para Server-Sent Events e `Response.stream(body: stream)` para download/streaming de arquivos grandes. `SseEvent` serializa no formato SSE wire protocol com suporte a `data`, `event`, `id` e `retry`.
+- **Tratamento de erros estruturado**: Exceções tipadas (`NotFound`, `BadRequest`, `Forbidden`, `Unauthorized`, `Conflict`, `UnprocessableEntity`, `TooManyRequests`, `InternalServerError`, `BadGateway`, `ServiceUnavailable`) que mapeiam automaticamente para HTTP status codes com body JSON padronizado. `throw NotFound(message: 'User not found')` vira 404 com `{"errorCode": "404", "message": "User not found"}`.
+- **Dependency injection por request**: `request.provide<T>(value)` / `request.read<T>()` / `request.tryRead<T>()` via Expando. Armazenamento por tipo, escopo por request. Funciona em guards, pipeline middlewares e handlers.
+- **Suporte a isolates (cluster mode)**: `Sparky.cluster(factory, isolates: 4)` cria N isolates compartilhando a mesma porta. Factory deve ser função top-level ou estática. Retorna `SparkyCluster` com `.port` e `.close()`. Default: `Platform.numberOfProcessors` isolates.
+- **Security headers (Helmet-style)**: `SecurityHeadersConfig().createMiddleware()` adiciona headers de segurança padrão — X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security, Content-Security-Policy, Referrer-Policy, Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy e mais. Todos configuráveis individualmente.
+- **Test utilities**: `SparkyTestClient` que boota o servidor numa porta OS-assigned (port 0) com API limpa para GET/POST/PUT/PATCH/DELETE/HEAD. Importável via `package:sparky/testing.dart`.
+
+### Breaking Changes
+
+- **`Sparky.server` renomeado para `Sparky.single`**: O construtor principal agora é `Sparky.single(...)`. `Sparky.server` não existe mais.
+
+---
+
 # 2.1.0
 
 ### Melhorias de Segurança
