@@ -113,6 +113,8 @@ final class SparkyTestClient {
   /// by default to keep test output clean.
   static Future<SparkyTestClient> boot({
     required List<Route> routes,
+    OpenApiConfig? openApi,
+    MetricsConfig? metrics,
     Route? routeNotFound,
     Pipeline? pipelineBefore,
     Pipeline? pipelineAfter,
@@ -125,6 +127,8 @@ final class SparkyTestClient {
   }) async {
     final server = Sparky.single(
       routes: routes,
+      openApi: openApi,
+      metrics: metrics,
       port: 0,
       logConfig: LogConfig.none,
       routeNotFound: routeNotFound,

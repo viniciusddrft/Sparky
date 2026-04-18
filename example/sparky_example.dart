@@ -63,9 +63,19 @@ void main() async {
     'name': [isRequired, isString, minLength(3)],
     'email': [isRequired, isString, isEmail],
     'age': [isRequired, isNum, min(18)],
+  }, openApiBodySchema: {
+    'type': 'object',
+    'required': ['name', 'email', 'age'],
+    'properties': {
+      'name': {'type': 'string', 'minLength': 3},
+      'email': {'type': 'string', 'format': 'email'},
+      'age': {'type': 'number', 'minimum': 18},
+    },
   });
 
-  final register = RouteHttp.post('/register', middleware: (request) async {
+  final register = RouteHttp.post('/register',
+      openApi: registerSchema.openApiOperation,
+      middleware: (request) async {
     final body = await request.getJsonBody();
     final errors = registerSchema.validate(body);
     if (errors.isNotEmpty) {
@@ -261,6 +271,13 @@ void main() async {
   // 22. Start the server with all features
   // ─────────────────────────────────────────────────────────────────────
   final server = Sparky.single(
+    openApi: const OpenApiConfig(
+      info: OpenApiInfo(
+        title: 'Sparky Example API',
+        version: '1.0.0',
+        description: 'Demo server from sparky_example.dart — open /docs for Swagger UI.',
+      ),
+    ),
     routes: [
       hello,
       userById,
@@ -306,10 +323,11 @@ void main() async {
   );
 
   // ─────────────────────────────────────────────────────────────────────
-  // 23. Graceful shutdown
+  // 24. Graceful shutdown
   // ─────────────────────────────────────────────────────────────────────
   await server.ready;
-  print('Sparky running on http://127.0.0.1:${server.actualPort}');
+  print(
+      'Sparky running on http://127.0.0.1:${server.actualPort} (API docs: /docs)');
 
   ProcessSignal.sigint.watch().listen((_) async {
     print('\nShutting down...');

@@ -1,5 +1,7 @@
 // @author viniciusddrft
 
+import '../openapi/openapi_types.dart';
+
 /// A validation rule receives the field name, its value (nullable),
 /// and returns an error message or `null` if valid.
 typedef ValidationRule = String? Function(String field, Object? value);
@@ -21,7 +23,29 @@ typedef ValidationRule = String? Function(String field, Object? value);
 final class Validator {
   final Map<String, List<ValidationRule>> _rules;
 
-  const Validator(this._rules);
+  /// Optional JSON Schema object (`type`, `properties`, `required`, …) describing
+  /// the JSON request body for OpenAPI. Keep in sync with [_rules] manually or
+  /// via code generation.
+  final Map<String, Object?>? openApiBodySchema;
+
+  const Validator(this._rules, {this.openApiBodySchema});
+
+  /// Minimal [OpenApiOperation] with `requestBody` for `application/json`, or
+  /// `null` when [openApiBodySchema] is null.
+  OpenApiOperation? get openApiOperation {
+    final schema = openApiBodySchema;
+    if (schema == null) return null;
+    return OpenApiOperation(
+      requestBody: {
+        'required': true,
+        'content': {
+          'application/json': {
+            'schema': schema,
+          },
+        },
+      },
+    );
+  }
 
   /// Validates [data] against the schema.
   /// Returns a map of field names to their first error message.

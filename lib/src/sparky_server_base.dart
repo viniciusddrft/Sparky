@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'package:sparky/sparky.dart';
+import 'package:sparky/src/metrics/app_routes_bundle.dart';
 
 /// Main logic file of Sparky's operation.
 
@@ -10,7 +11,9 @@ part 'cache/cache_manager.dart';
 
 base class SparkyBase {
   SparkyBase(
-      {required this.routes,
+      {required List<Route> routes,
+      OpenApiConfig? openApi,
+      MetricsConfig? metrics,
       this.port = 8080,
       this.ip = '0.0.0.0',
       this.shared = false,
@@ -25,6 +28,7 @@ base class SparkyBase {
       this.maxBodySize,
       this.enableGzip = false,
       this.gzipMinLength = 0,
+
       /// Time-to-live for cached responses. Only applies to static routes
       /// (routes without `:param` segments). Dynamic routes are never cached
       /// because each path parameter combination would need its own entry.
@@ -33,10 +37,18 @@ base class SparkyBase {
       /// Maximum number of entries in the response cache. When exceeded,
       /// the least recently used entry is evicted. Only static routes are cached.
       int? cacheMaxEntries})
-      : _cacheManager = _CacheManager()
+      : _appRoutes = AppRoutesBundle.merge(routes, openApi, metrics),
+        _cacheManager = _CacheManager()
           ..ttl = cacheTtl
           ..maxEntries = cacheMaxEntries;
-  final List<Route> routes;
+
+  final AppRoutesBundle _appRoutes;
+
+  /// Resolved routes (user routes + optional OpenAPI + optional `/metrics`).
+  List<Route> get routes => _appRoutes.routes;
+
+  /// In-process Prometheus metrics, or `null` when [MetricsConfig] was disabled.
+  PrometheusMetrics? get prometheusMetrics => _appRoutes.prometheusMetrics;
   final int port;
   final bool shared;
   final String ip, logFilePath;

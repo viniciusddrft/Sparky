@@ -7,45 +7,56 @@ import 'route_base.dart';
 /// [Patch], [Head], [Options], [Trace] but it's possible to customize and make your route work with more than one method.
 final class RouteHttp extends Route {
   RouteHttp(super.name,
-      {required super.middleware, super.acceptedMethods, super.guards});
+      {required super.middleware,
+      super.acceptedMethods,
+      super.guards,
+      super.openApi});
 
   RouteHttp.get(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.get]});
 
   RouteHttp.put(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.put]});
 
   RouteHttp.delete(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.delete]});
 
   RouteHttp.post(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.post]});
 
   RouteHttp.patch(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.patch]});
 
   RouteHttp.head(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.head]});
 
   RouteHttp.options(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.options]});
 
   RouteHttp.trace(super.name,
       {required super.middleware,
       super.guards,
+      super.openApi,
       super.acceptedMethods = const [AcceptedMethods.trace]});
 }

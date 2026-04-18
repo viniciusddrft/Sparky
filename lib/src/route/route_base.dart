@@ -1,6 +1,7 @@
 // Author: viniciusddrft
 
-import 'package:sparky/sparky.dart';
+import '../openapi/openapi_types.dart';
+import '../types/sparky_types.dart';
 
 /// Base class of a route in Sparky; HTTP routes and WebSocket routes extend directly from it.
 ///
@@ -32,10 +33,25 @@ base class Route {
   late final List<String> _paramNames =
       isDynamic ? _extractParamNames() : const [];
 
+  /// Names of path parameters (without the `:` prefix), in path order.
+  ///
+  /// Empty when [isDynamic] is false.
+  List<String> get pathParameterNames =>
+      isDynamic ? List<String>.unmodifiable(_paramNames) : const [];
+
+  /// Whether this route handles HTTP requests via [middleware].
+  ///
+  /// WebSocket-only routes use [middlewareWebSocket] and leave [middleware] null.
+  bool get isHttpRoute => middleware != null;
+
+  /// Optional OpenAPI documentation for this operation (OpenAPI 3.x).
+  final OpenApiOperation? openApi;
+
   Route(this.name,
       {this.middleware,
       this.middlewareWebSocket,
       this.guards = const [],
+      this.openApi,
       this.acceptedMethods = const [
         AcceptedMethods.get,
         AcceptedMethods.post,

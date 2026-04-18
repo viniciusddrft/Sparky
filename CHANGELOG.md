@@ -1,3 +1,20 @@
+# 2.3.0
+
+### Breaking Changes
+
+- **CSRF: `cookieSecure` default agora é `true`**: `CsrfConfig().cookieSecure` passou de `false` para `true`. O cookie `sparky_csrf` só será enviado em HTTPS por padrão. Em desenvolvimento local sem TLS, passe `CsrfConfig(cookieSecure: false)` explicitamente.
+
+### Novas Funcionalidades
+
+- **`MetricsConfig.authGuard`**: Novo campo opcional `MiddlewareNullable? authGuard` em `MetricsConfig` que, quando fornecido, é anexado à rota `/metrics` como guard. Protege o scrape contra acesso não autenticado (ex.: validar token bearer, IP allowlist) sem precisar expor um listener separado.
+- **`OpenApiOperation.parameters`**: Novo campo `List<Map<String, Object?>>? parameters` em `OpenApiOperation` para documentar parâmetros de query, header e cookie. São mescladas com os path params auto-gerados; em caso de colisão (`name|in`), o valor do usuário prevalece — isso permite refinar o `schema` de path params (ex.: `integer`/`uuid` em vez do default `string`).
+
+### Correções
+
+- **Cache de response vs. guards**: Rotas estáticas com `guards` não-vazios não são mais cacheadas. O cache anterior armazenava a primeira response (tipicamente o 401 de um guard que rejeitava) e a servia para todas as chamadas subsequentes, anulando o guard. Agora `isCached` é consultado apenas quando `route.guards.isEmpty`.
+
+---
+
 # 2.2.0
 
 ### Novas Funcionalidades

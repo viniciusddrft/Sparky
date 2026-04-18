@@ -42,13 +42,15 @@ final class RouteGroup {
         return RouteHttp(fullPath,
             middleware: route.middleware!,
             acceptedMethods: route.acceptedMethods,
-            guards: combinedGuards);
+            guards: combinedGuards,
+            openApi: route.openApi);
       }
       return Route(fullPath,
           middleware: route.middleware,
           middlewareWebSocket: route.middlewareWebSocket,
           acceptedMethods: route.acceptedMethods,
-          guards: combinedGuards);
+          guards: combinedGuards,
+          openApi: route.openApi);
     }).toList();
   }
 }

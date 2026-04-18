@@ -24,25 +24,27 @@ typedef SparkyFactory = FutureOr<Sparky> Function(int isolateIndex);
 
 base class Sparky extends SparkyBase with Logs {
   /// Creates a single Sparky server instance in the current isolate.
-  /// 
+  ///
   /// Use this for standard deployments where you don't need multi-core
   /// scaling via isolates. For cluster mode, use [Sparky.cluster].
   Sparky.single({
     required super.routes,
-    super.port = 8080,
-    super.ip = '0.0.0.0',
+    super.openApi,
+    super.metrics,
+    super.port,
+    super.ip,
     super.shared,
     super.routeNotFound,
-    super.logConfig = LogConfig.showAndWriteLogs,
-    super.logType = LogType.all,
-    super.logFilePath = 'logs.txt',
+    super.logConfig,
+    super.logType,
+    super.logFilePath,
     super.pipelineBefore,
     super.pipelineAfter,
     super.securityContext,
     super.requestTimeout,
     super.maxBodySize,
-    super.enableGzip = false,
-    super.gzipMinLength = 0,
+    super.enableGzip,
+    super.gzipMinLength,
     super.cacheTtl,
     super.cacheMaxEntries,
   }) {
@@ -101,8 +103,7 @@ base class Sparky extends SparkyBase with Logs {
     return null;
   }
 
-  bool _isCacheableMethod(String method) =>
-      method == 'GET' || method == 'HEAD';
+  bool _isCacheableMethod(String method) => method == 'GET' || method == 'HEAD';
 
   Future<void> _start() async {
     _server = securityContext != null
@@ -114,12 +115,157 @@ base class Sparky extends SparkyBase with Logs {
 
     _subscription = _server.listen(
       (HttpRequest request) async {
+        final pm = prometheusMetrics;
+        pm?.requestStarted();
+        final sw = Stopwatch()..start();
+        void recordMetrics(int statusCode) {
+          pm?.recordHttpRequest(
+            method: request.method,
+            path: request.uri.path,
+            statusCode: statusCode,
+            elapsed: sw.elapsed,
+          );
+        }
+
         try {
-          var upgradedToWebSocket = false;
-          if (maxBodySize != null) {
-            request.setMaxBodySize(maxBodySize!);
-            final contentLength = request.contentLength;
-            if (contentLength > maxBodySize!) {
+          try {
+            var upgradedToWebSocket = false;
+            if (maxBodySize != null) {
+              request.setMaxBodySize(maxBodySize!);
+              final contentLength = request.contentLength;
+              if (contentLength > maxBodySize!) {
+                final response = request.response;
+                response
+                  ..statusCode = HttpStatus.requestEntityTooLarge
+                  ..headers.contentType = ContentType.json
+                  ..write(
+                      '{"errorCode":"413","message":"Request Entity Too Large"}');
+                await response.close();
+                recordMetrics(HttpStatus.requestEntityTooLarge);
+                return;
+              }
+              if (contentLength < 0 &&
+                  request.method != 'GET' &&
+                  request.method != 'HEAD' &&
+                  request.method != 'OPTIONS') {
+                await request.preloadBodyWithLimit(maxBodySize!);
+              }
+            }
+
+            Future<Response> resolveResponse() async {
+              final path = request.uri.path;
+
+              final Response? pipelineBeforeResponse =
+                  await runPipeline(pipelineBefore, request);
+
+              final route = _resolveRoute(path, request);
+
+              if (WebSocketTransformer.isUpgradeRequest(request) &&
+                  route != null) {
+                final websocket = await WebSocketTransformer.upgrade(request);
+                route.middlewareWebSocket!(websocket);
+                upgradedToWebSocket = true;
+                return const Response.ok(body: '');
+              } else {
+                final Response routeResponse;
+
+                if (pipelineBeforeResponse == null) {
+                  // Cache only applies to static routes (no :param segments),
+                  // idempotent methods (GET, HEAD), and routes without guards
+                  // (guards evaluate per-request state, e.g. auth). Dynamic
+                  // routes and stream responses are intentionally excluded.
+                  final cacheable = route != null &&
+                      !route.isDynamic &&
+                      route.guards.isEmpty &&
+                      _isCacheableMethod(request.method);
+                  if (cacheable && isCached(route, request.method)) {
+                    routeResponse = getCachedResponse(route, request.method);
+                  } else {
+                    routeResponse = await _internalHandler(request, route);
+                    if (cacheable && !routeResponse.isStream) {
+                      cacheResponse(route, request.method, routeResponse);
+                    }
+                  }
+                } else {
+                  routeResponse = pipelineBeforeResponse;
+                }
+
+                return routeResponse;
+              }
+            }
+
+            final Response routeResponse;
+            if (requestTimeout != null) {
+              final handlerFuture = resolveResponse();
+              routeResponse =
+                  await handlerFuture.timeout(requestTimeout!, onTimeout: () {
+                request.markCancelled();
+                handlerFuture.ignore();
+                throw TimeoutException('Request timeout', requestTimeout);
+              });
+            } else {
+              routeResponse = await resolveResponse();
+            }
+
+            if (upgradedToWebSocket) {
+              await runPipeline(pipelineAfter, request);
+              recordMetrics(HttpStatus.switchingProtocols);
+              return;
+            }
+
+            final response = request.response;
+            response
+              ..headers.contentType =
+                  routeResponse.contentType ?? ContentType.json
+              ..statusCode = routeResponse.status;
+            if (routeResponse.headers != null) {
+              routeResponse.headers!.forEach((key, value) {
+                response.headers.set(key, value);
+              });
+            }
+            if (routeResponse.cookies != null) {
+              response.cookies.addAll(routeResponse.cookies!);
+            }
+
+            if (routeResponse.isStream) {
+              final stream = routeResponse.bodyStream!;
+              final canGzipStream = enableGzip &&
+                  _isCompressibleContentType(routeResponse.contentType) &&
+                  request.headers[HttpHeaders.acceptEncodingHeader]
+                          ?.any((e) => e.contains('gzip')) ==
+                      true;
+              if (canGzipStream) {
+                response.headers.chunkedTransferEncoding = true;
+                response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+                response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+                await response.addStream(stream.transform(gzip.encoder));
+              } else {
+                await response.addStream(stream);
+              }
+            } else {
+              final responseBytes = routeResponse.bodyBytes;
+              final canGzip = enableGzip &&
+                  !routeResponse.isBinary &&
+                  responseBytes.length >= gzipMinLength &&
+                  request.headers[HttpHeaders.acceptEncodingHeader]
+                          ?.any((e) => e.contains('gzip')) ==
+                      true;
+              if (canGzip) {
+                response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+                response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+                response.add(gzip.encode(responseBytes));
+              } else {
+                response.add(responseBytes);
+              }
+            }
+            await response.close();
+
+            await runPipeline(pipelineAfter, request);
+            _requestServerLog(request, routeResponse);
+            recordMetrics(routeResponse.status);
+          } on BodyTooLargeException {
+            _errorServerLog('Request entity too large: ${request.uri.path}');
+            try {
               final response = request.response;
               response
                 ..statusCode = HttpStatus.requestEntityTooLarge
@@ -127,167 +273,46 @@ base class Sparky extends SparkyBase with Logs {
                 ..write(
                     '{"errorCode":"413","message":"Request Entity Too Large"}');
               await response.close();
-              return;
-            }
-            if (contentLength < 0 &&
-                request.method != 'GET' &&
-                request.method != 'HEAD' &&
-                request.method != 'OPTIONS') {
-              await request.preloadBodyWithLimit(maxBodySize!);
-            }
+            } catch (_) {}
+            recordMetrics(HttpStatus.requestEntityTooLarge);
+          } on TimeoutException {
+            _errorServerLog('Request timeout: ${request.uri.path}');
+            try {
+              final response = request.response;
+              response
+                ..statusCode = HttpStatus.requestTimeout
+                ..headers.contentType = ContentType.json
+                ..write('{"errorCode":"408","message":"Request Timeout"}');
+              await response.close();
+            } catch (_) {}
+            recordMetrics(HttpStatus.requestTimeout);
+          } on HttpException catch (e) {
+            _errorServerLog(
+                'HTTP ${e.statusCode}: ${e.message} (${request.uri.path})');
+            try {
+              final response = request.response;
+              response
+                ..statusCode = e.statusCode
+                ..headers.contentType = ContentType.json
+                ..write(json.encode(e.toJson()));
+              await response.close();
+            } catch (_) {}
+            recordMetrics(e.statusCode);
+          } catch (e) {
+            _errorServerLog(e);
+            try {
+              final response = request.response;
+              response
+                ..statusCode = HttpStatus.internalServerError
+                ..headers.contentType = ContentType.json
+                ..write(
+                    '{"errorCode":"500","message":"Internal Server Error"}');
+              await response.close();
+            } catch (_) {}
+            recordMetrics(HttpStatus.internalServerError);
           }
-
-          Future<Response> resolveResponse() async {
-            final path = request.uri.path;
-
-            final Response? pipelineBeforeResponse =
-                await runPipeline(pipelineBefore, request);
-
-            final route = _resolveRoute(path, request);
-
-            if (WebSocketTransformer.isUpgradeRequest(request) &&
-                route != null) {
-              final websocket = await WebSocketTransformer.upgrade(request);
-              route.middlewareWebSocket!(websocket);
-              upgradedToWebSocket = true;
-              return const Response.ok(body: '');
-            } else {
-              final Response routeResponse;
-
-              if (pipelineBeforeResponse == null) {
-                // Cache only applies to static routes (no :param segments)
-                // and idempotent methods (GET, HEAD). Dynamic routes and
-                // stream responses are intentionally excluded.
-                if (route != null &&
-                    !route.isDynamic &&
-                    _isCacheableMethod(request.method) &&
-                    isCached(route, request.method)) {
-                  routeResponse = getCachedResponse(route, request.method);
-                } else {
-                  routeResponse = await _internalHandler(request, route);
-                  if (route != null &&
-                      !route.isDynamic &&
-                      _isCacheableMethod(request.method) &&
-                      !routeResponse.isStream) {
-                    cacheResponse(route, request.method, routeResponse);
-                  }
-                }
-              } else {
-                routeResponse = pipelineBeforeResponse;
-              }
-
-              return routeResponse;
-            }
-          }
-
-          final Response routeResponse;
-          if (requestTimeout != null) {
-            final handlerFuture = resolveResponse();
-            routeResponse = await handlerFuture.timeout(requestTimeout!,
-                onTimeout: () {
-              request.markCancelled();
-              handlerFuture.ignore();
-              throw TimeoutException(
-                  'Request timeout', requestTimeout);
-            });
-          } else {
-            routeResponse = await resolveResponse();
-          }
-
-          if (upgradedToWebSocket) {
-            await runPipeline(pipelineAfter, request);
-            return;
-          }
-
-          final response = request.response;
-          response
-            ..headers.contentType = routeResponse.contentType ?? ContentType.json
-            ..statusCode = routeResponse.status;
-          if (routeResponse.headers != null) {
-            routeResponse.headers!.forEach((key, value) {
-              response.headers.set(key, value);
-            });
-          }
-          if (routeResponse.cookies != null) {
-            response.cookies.addAll(routeResponse.cookies!);
-          }
-
-          if (routeResponse.isStream) {
-            final stream = routeResponse.bodyStream!;
-            final canGzipStream = enableGzip &&
-                _isCompressibleContentType(routeResponse.contentType) &&
-                request.headers[HttpHeaders.acceptEncodingHeader]
-                        ?.any((e) => e.contains('gzip')) ==
-                    true;
-            if (canGzipStream) {
-              response.headers.chunkedTransferEncoding = true;
-              response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
-              response.headers
-                  .set(HttpHeaders.contentEncodingHeader, 'gzip');
-              await response.addStream(stream.transform(gzip.encoder));
-            } else {
-              await response.addStream(stream);
-            }
-          } else {
-            final responseBytes = routeResponse.bodyBytes;
-            final canGzip = enableGzip &&
-                !routeResponse.isBinary &&
-                responseBytes.length >= gzipMinLength &&
-                request.headers[HttpHeaders.acceptEncodingHeader]
-                        ?.any((e) => e.contains('gzip')) ==
-                    true;
-            if (canGzip) {
-              response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
-              response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
-              response.add(gzip.encode(responseBytes));
-            } else {
-              response.add(responseBytes);
-            }
-          }
-          await response.close();
-
-          await runPipeline(pipelineAfter, request);
-          _requestServerLog(request, routeResponse);
-        } on BodyTooLargeException {
-          _errorServerLog('Request entity too large: ${request.uri.path}');
-          try {
-            final response = request.response;
-            response
-              ..statusCode = HttpStatus.requestEntityTooLarge
-              ..headers.contentType = ContentType.json
-              ..write('{"errorCode":"413","message":"Request Entity Too Large"}');
-            await response.close();
-          } catch (_) {}
-        } on TimeoutException {
-          _errorServerLog('Request timeout: ${request.uri.path}');
-          try {
-            final response = request.response;
-            response
-              ..statusCode = HttpStatus.requestTimeout
-              ..headers.contentType = ContentType.json
-              ..write('{"errorCode":"408","message":"Request Timeout"}');
-            await response.close();
-          } catch (_) {}
-        } on HttpException catch (e) {
-          _errorServerLog('HTTP ${e.statusCode}: ${e.message} (${request.uri.path})');
-          try {
-            final response = request.response;
-            response
-              ..statusCode = e.statusCode
-              ..headers.contentType = ContentType.json
-              ..write(json.encode(e.toJson()));
-            await response.close();
-          } catch (_) {}
-        } catch (e) {
-          _errorServerLog(e);
-          try {
-            final response = request.response;
-            response
-              ..statusCode = HttpStatus.internalServerError
-              ..headers.contentType = ContentType.json
-              ..write('{"errorCode":"500","message":"Internal Server Error"}');
-            await response.close();
-          } catch (_) {}
+        } finally {
+          pm?.requestFinished();
         }
       },
       onError: (e) {
@@ -363,8 +388,7 @@ base class Sparky extends SparkyBase with Logs {
     if (mainServer.port != 0 || isolateCount == 1) {
       // All good — proceed
     } else {
-      throw StateError(
-          'port: 0 is not supported with multiple isolates. '
+      throw StateError('port: 0 is not supported with multiple isolates. '
           'Use an explicit port when using Sparky.cluster() with isolates > 1.');
     }
 
@@ -436,8 +460,7 @@ base class Sparky extends SparkyBase with Logs {
   }
 }
 
-Future<void> _isolateEntryPoint(
-    (SparkyFactory, int, SendPort) config) async {
+Future<void> _isolateEntryPoint((SparkyFactory, int, SendPort) config) async {
   final (factory, index, mainSendPort) = config;
   final shutdownPort = ReceivePort();
 
