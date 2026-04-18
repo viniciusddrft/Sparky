@@ -33,6 +33,11 @@ Sparky é um pacote Dart para construção de APIs REST de forma simples, com su
 - Dependency injection por request (`provide<T>` / `read<T>` / `tryRead<T>`)
 - Multi-isolate com `Sparky.cluster()` para escalar em múltiplos cores
 - Security headers (Helmet-style) com `SecurityHeadersConfig`
+- Documentação automática **OpenAPI 3.0 + Swagger UI** (`/openapi.json`, `/docs`)
+- Proteção **CSRF** double-submit cookie com `CsrfConfig`
+- Métricas **Prometheus** prontas para scrape (`MetricsConfig`, endpoint `/metrics`)
+- **Health checks** liveness/readiness (`HealthCheckConfig`, `/health` e `/ready`)
+- **Task scheduling** com cron e intervalo (`SchedulerConfig`, `ScheduledTask`)
 - Test utilities com `SparkyTestClient`
 
 ## Como Usar
@@ -533,6 +538,160 @@ const headers = SecurityHeadersConfig(
   strictTransportSecurity: null, // omite o header
 );
 ```
+
+### OpenAPI / Swagger UI
+
+Gere a spec **OpenAPI 3.0.3** automaticamente a partir das rotas HTTP e sirva o Swagger UI em `/docs`.
+
+```dart
+Sparky.single(
+  openApi: const OpenApiConfig(
+    info: OpenApiInfo(
+      title: 'Minha API',
+      version: '1.0.0',
+      description: 'Documentação gerada automaticamente',
+    ),
+  ),
+  routes: [...],
+);
+```
+
+- `GET /openapi.json` — spec em JSON
+- `GET /docs` — Swagger UI (CDN configurável via `swaggerUiCdnBase`)
+
+Por padrão cada rota vira uma `operation` mínima (só com status `200`). Enriqueça com `OpenApiOperation`:
+
+```dart
+RouteHttp.post('/users',
+  openApi: const OpenApiOperation(
+    summary: 'Cria um usuário',
+    tags: ['users'],
+    parameters: [
+      {'name': 'X-Tenant', 'in': 'header', 'required': true, 'schema': {'type': 'string'}},
+    ],
+  ),
+  middleware: (r) async => ...,
+);
+```
+
+`Validator.openApiBodySchema` + `Validator.openApiOperation` documentam o body JSON sem duplicação. Rotas só WebSocket não entram na spec.
+
+> A rota `/docs` emite um `Content-Security-Policy` próprio que libera o CDN do Swagger UI — funciona out-of-the-box mesmo com `SecurityHeadersConfig` ativo.
+
+### CSRF protection
+
+Proteção double-submit cookie contra ataques CSRF. O middleware emite `sparky_csrf` (cookie legível por JS same-origin) em métodos safe (`GET/HEAD/OPTIONS`) e valida em `POST/PUT/PATCH/DELETE`.
+
+```dart
+Sparky.single(
+  routes: [...],
+  pipelineBefore: Pipeline()
+    ..add(CsrfConfig().createMiddleware()),
+);
+```
+
+O cliente deve enviar o token de volta no header `X-CSRF-Token` — ou no campo `_csrf` para `application/x-www-form-urlencoded` / JSON. Para `multipart/form-data` o token deve ir **apenas no header** (o body não é lido no middleware). Por padrão, requests com `Authorization: Bearer …` **pulam** a checagem (ideal para APIs JWT stateless); desligue com `ignoreRequestsWithBearer: false`.
+
+Em dev local sem TLS, desabilite `cookieSecure`:
+
+```dart
+const csrf = CsrfConfig(cookieSecure: false);
+```
+
+Token inválido/ausente → HTTP `403` com body `{"error": "csrf_validation_failed"}`.
+
+### Métricas Prometheus
+
+Endpoint `/metrics` em formato Prometheus 0.0.4, com contador, gauge e histograma de duração prontos pra scrape.
+
+```dart
+Sparky.single(
+  metrics: MetricsConfig(
+    ignorePaths: {'/health', '/ready'}, // não contar probes
+  ),
+  routes: [...],
+);
+```
+
+Séries expostas (prefixo configurável via `namespace`):
+
+- `sparky_http_requests_total{method,status}` — contador
+- `sparky_http_requests_in_progress` — gauge
+- `sparky_http_request_duration_seconds_bucket{method,le}` — histograma (quantis p50/p95/p99 via `histogram_quantile` no Prometheus)
+
+Proteja o scrape com `authGuard` (Bearer, IP allowlist, etc):
+
+```dart
+MetricsConfig(
+  authGuard: (request) async {
+    if (request.headers.value('Authorization') != 'Bearer $scrapeToken') {
+      return const Response.unauthorized(body: 'denied');
+    }
+    return null;
+  },
+);
+```
+
+Em `Sparky.cluster`, cada isolate expõe o próprio conjunto de séries — o Prometheus soma via `sum by (method, status)`.
+
+### Health checks
+
+Endpoints `/health` (liveness) e `/ready` (readiness) com checks plugáveis e timeout, no formato Kubernetes-friendly.
+
+```dart
+Sparky.single(
+  health: HealthCheckConfig(
+    readinessChecks: {
+      'db': () async {
+        final ok = await db.ping();
+        return ok
+            ? const HealthCheckResult.up()
+            : const HealthCheckResult.down(message: 'db unreachable');
+      },
+      'redis': () async => const HealthCheckResult.up(details: {'latencyMs': 2}),
+    },
+  ),
+  routes: [...],
+);
+```
+
+- Checks rodam em paralelo com `checkTimeout` (default 5s); timeout ou exceção viram `DOWN`.
+- Status geral é o pior individual (`DOWN > DEGRADED > UP`): `200` quando saudável ou degradado, `503` quando qualquer check é `DOWN`.
+- `failReadinessOnDegraded: true` faz `DEGRADED` também virar `503`.
+- `authGuard` opcional protege os probes (útil pra não expor estado de dependências publicamente).
+
+Body de resposta:
+
+```json
+{"status":"UP","checks":{"db":{"status":"UP"},"redis":{"status":"UP","details":{"latencyMs":2}}}}
+```
+
+### Task scheduling (cron + intervalo)
+
+Agende jobs recorrentes dentro do próprio processo. Cron de 5 campos (com aliases `jan-dec` / `sun-sat`, ranges, listas e `*/N`) ou cadência fixa por `Duration`.
+
+```dart
+Sparky.single(
+  scheduler: SchedulerConfig(tasks: [
+    ScheduledTask(
+      name: 'nightly-cleanup',
+      expression: '0 3 * * *', // todo dia às 03:00
+      job: () async => await cleanupOldRecords(),
+    ),
+    ScheduledTask.every(
+      interval: const Duration(minutes: 5),
+      name: 'heartbeat',
+      job: () => print('tick'),
+    ),
+  ]),
+  routes: [...],
+);
+```
+
+- Scheduler sobe com `server.ready` e para no `server.close()` aguardando jobs em voo.
+- `onError` captura exceções sem derrubar o loop.
+- `allowOverlap` evita pile-up em jobs lentos (default `true` pra cron, `false` pro `every`).
+- Em `Sparky.cluster`, cada isolate roda o próprio scheduler — pra exactly-once, dispare só quando `isolateIndex == 0` no factory ou use lock externo.
 
 ### Multi-isolate (cluster mode)
 

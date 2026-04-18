@@ -33,6 +33,11 @@ Sparky is a Dart package for building REST APIs in a simple way, with support fo
 - Per-request dependency injection (`provide<T>` / `read<T>` / `tryRead<T>`)
 - Multi-isolate with `Sparky.cluster()` for multi-core scaling
 - Helmet-style security headers with `SecurityHeadersConfig`
+- Automatic **OpenAPI 3.0 + Swagger UI** documentation (`/openapi.json`, `/docs`)
+- **CSRF** double-submit cookie protection with `CsrfConfig`
+- **Prometheus** metrics ready for scrape (`MetricsConfig`, `/metrics` endpoint)
+- **Health checks** liveness/readiness (`HealthCheckConfig`, `/health` and `/ready`)
+- **Task scheduling** with cron and fixed interval (`SchedulerConfig`, `ScheduledTask`)
 - Test utilities with `SparkyTestClient`
 
 ## How to Use
@@ -533,6 +538,160 @@ const headers = SecurityHeadersConfig(
   strictTransportSecurity: null, // omits the header
 );
 ```
+
+### OpenAPI / Swagger UI
+
+Auto-generate the **OpenAPI 3.0.3** spec from your HTTP routes and serve Swagger UI at `/docs`.
+
+```dart
+Sparky.single(
+  openApi: const OpenApiConfig(
+    info: OpenApiInfo(
+      title: 'My API',
+      version: '1.0.0',
+      description: 'Automatically generated docs',
+    ),
+  ),
+  routes: [...],
+);
+```
+
+- `GET /openapi.json` — JSON spec
+- `GET /docs` — Swagger UI (CDN configurable via `swaggerUiCdnBase`)
+
+Each route becomes a minimal `operation` (just a `200` response). Enrich it with `OpenApiOperation`:
+
+```dart
+RouteHttp.post('/users',
+  openApi: const OpenApiOperation(
+    summary: 'Create a user',
+    tags: ['users'],
+    parameters: [
+      {'name': 'X-Tenant', 'in': 'header', 'required': true, 'schema': {'type': 'string'}},
+    ],
+  ),
+  middleware: (r) async => ...,
+);
+```
+
+`Validator.openApiBodySchema` + `Validator.openApiOperation` document JSON bodies without duplication. WebSocket-only routes are not included.
+
+> The `/docs` route emits its own `Content-Security-Policy` that whitelists the Swagger UI CDN — it works out-of-the-box even with `SecurityHeadersConfig` enabled.
+
+### CSRF protection
+
+Double-submit cookie protection against CSRF. The middleware sets `sparky_csrf` (a cookie readable by same-origin JS) on safe methods (`GET/HEAD/OPTIONS`) and validates it on `POST/PUT/PATCH/DELETE`.
+
+```dart
+Sparky.single(
+  routes: [...],
+  pipelineBefore: Pipeline()
+    ..add(CsrfConfig().createMiddleware()),
+);
+```
+
+The client must send the token back in the `X-CSRF-Token` header — or in a `_csrf` field for `application/x-www-form-urlencoded` / JSON bodies. For `multipart/form-data`, send the token **only in the header** (the body is not read in the middleware). By default, requests carrying `Authorization: Bearer …` **skip** the check (handy for stateless JWT APIs); disable with `ignoreRequestsWithBearer: false`.
+
+For local HTTP dev, disable `cookieSecure`:
+
+```dart
+const csrf = CsrfConfig(cookieSecure: false);
+```
+
+Missing/invalid token → HTTP `403` with `{"error": "csrf_validation_failed"}`.
+
+### Prometheus metrics
+
+`/metrics` endpoint in Prometheus 0.0.4 text format, with counter, gauge and duration histogram ready to be scraped.
+
+```dart
+Sparky.single(
+  metrics: MetricsConfig(
+    ignorePaths: {'/health', '/ready'}, // don't count probes
+  ),
+  routes: [...],
+);
+```
+
+Exposed series (prefix configurable via `namespace`):
+
+- `sparky_http_requests_total{method,status}` — counter
+- `sparky_http_requests_in_progress` — gauge
+- `sparky_http_request_duration_seconds_bucket{method,le}` — histogram (compute p50/p95/p99 via `histogram_quantile` in Prometheus)
+
+Protect the scrape with `authGuard` (Bearer, IP allowlist, etc):
+
+```dart
+MetricsConfig(
+  authGuard: (request) async {
+    if (request.headers.value('Authorization') != 'Bearer $scrapeToken') {
+      return const Response.unauthorized(body: 'denied');
+    }
+    return null;
+  },
+);
+```
+
+Under `Sparky.cluster`, each isolate exposes its own series — Prometheus aggregates via `sum by (method, status)`.
+
+### Health checks
+
+`/health` (liveness) and `/ready` (readiness) endpoints with pluggable checks and timeout, Kubernetes-friendly.
+
+```dart
+Sparky.single(
+  health: HealthCheckConfig(
+    readinessChecks: {
+      'db': () async {
+        final ok = await db.ping();
+        return ok
+            ? const HealthCheckResult.up()
+            : const HealthCheckResult.down(message: 'db unreachable');
+      },
+      'redis': () async => const HealthCheckResult.up(details: {'latencyMs': 2}),
+    },
+  ),
+  routes: [...],
+);
+```
+
+- Checks run in parallel under `checkTimeout` (default 5s); timeouts and exceptions map to `DOWN`.
+- Overall status is the worst individual one (`DOWN > DEGRADED > UP`): `200` when healthy or degraded, `503` when any check is `DOWN`.
+- `failReadinessOnDegraded: true` makes `DEGRADED` also return `503`.
+- Optional `authGuard` protects the probes (so you don't expose dependency state publicly).
+
+Response body:
+
+```json
+{"status":"UP","checks":{"db":{"status":"UP"},"redis":{"status":"UP","details":{"latencyMs":2}}}}
+```
+
+### Task scheduling (cron + interval)
+
+Run recurring jobs in-process. 5-field cron (with aliases `jan-dec` / `sun-sat`, ranges, lists and `*/N`) or a fixed `Duration` cadence.
+
+```dart
+Sparky.single(
+  scheduler: SchedulerConfig(tasks: [
+    ScheduledTask(
+      name: 'nightly-cleanup',
+      expression: '0 3 * * *', // every day at 03:00
+      job: () async => await cleanupOldRecords(),
+    ),
+    ScheduledTask.every(
+      interval: const Duration(minutes: 5),
+      name: 'heartbeat',
+      job: () => print('tick'),
+    ),
+  ]),
+  routes: [...],
+);
+```
+
+- The scheduler starts on `server.ready` and stops on `server.close()` awaiting in-flight jobs.
+- `onError` captures exceptions without tearing down the loop.
+- `allowOverlap` prevents pile-up for slow jobs (default `true` for cron, `false` for `every`).
+- Under `Sparky.cluster`, each isolate runs its own scheduler — for exactly-once, gate on `isolateIndex == 0` in the factory or use an external lock.
 
 ### Multi-isolate (cluster mode)
 

@@ -1,3 +1,11 @@
+# 2.3.1
+
+### Documentação
+
+- **README (PT + EN)**: Adicionadas seções para as features já presentes no pacote e que não estavam documentadas no README: **OpenAPI / Swagger UI**, **CSRF protection**, **Métricas Prometheus**, **Health checks** e **Task scheduling (cron + intervalo)**. Cada seção traz exemplo mínimo de configuração, comportamento padrão e observações de produção (CDN da CSP do `/docs`, `cookieSecure` em dev, agregação de séries em cluster, exactly-once em scheduler). A lista de *Features* no topo dos dois READMEs foi atualizada com os bullets correspondentes. Nenhuma mudança de código.
+
+---
+
 # 2.3.0
 
 ### Breaking Changes
