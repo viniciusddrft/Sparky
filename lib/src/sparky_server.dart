@@ -31,6 +31,8 @@ base class Sparky extends SparkyBase with Logs {
     required super.routes,
     super.openApi,
     super.metrics,
+    super.health,
+    super.scheduler,
     super.port,
     super.ip,
     super.shared,
@@ -112,6 +114,7 @@ base class Sparky extends SparkyBase with Logs {
         : await HttpServer.bind(ip, port, shared: shared);
 
     _openServerLog();
+    scheduler?.start();
 
     _subscription = _server.listen(
       (HttpRequest request) async {
@@ -453,6 +456,7 @@ base class Sparky extends SparkyBase with Logs {
 
   /// Gracefully shuts down the server.
   Future<void> close() async {
+    await scheduler?.stop();
     await _subscription?.cancel();
     await _server.close();
     await _file?.flush();

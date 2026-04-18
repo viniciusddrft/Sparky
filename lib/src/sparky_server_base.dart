@@ -14,6 +14,8 @@ base class SparkyBase {
       {required List<Route> routes,
       OpenApiConfig? openApi,
       MetricsConfig? metrics,
+      HealthCheckConfig? health,
+      SchedulerConfig? scheduler,
       this.port = 8080,
       this.ip = '0.0.0.0',
       this.shared = false,
@@ -37,18 +39,23 @@ base class SparkyBase {
       /// Maximum number of entries in the response cache. When exceeded,
       /// the least recently used entry is evicted. Only static routes are cached.
       int? cacheMaxEntries})
-      : _appRoutes = AppRoutesBundle.merge(routes, openApi, metrics),
+      : _appRoutes = AppRoutesBundle.merge(routes, openApi, metrics, health),
+        _scheduler = scheduler != null ? Scheduler(scheduler) : null,
         _cacheManager = _CacheManager()
           ..ttl = cacheTtl
           ..maxEntries = cacheMaxEntries;
 
   final AppRoutesBundle _appRoutes;
+  final Scheduler? _scheduler;
 
   /// Resolved routes (user routes + optional OpenAPI + optional `/metrics`).
   List<Route> get routes => _appRoutes.routes;
 
   /// In-process Prometheus metrics, or `null` when [MetricsConfig] was disabled.
   PrometheusMetrics? get prometheusMetrics => _appRoutes.prometheusMetrics;
+
+  /// In-process scheduler, or `null` when [SchedulerConfig] was not provided.
+  Scheduler? get scheduler => _scheduler;
   final int port;
   final bool shared;
   final String ip, logFilePath;

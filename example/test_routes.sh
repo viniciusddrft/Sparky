@@ -129,7 +129,54 @@ curl -s -i "$BASE/hello" \
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "15. Rate limiting — send requests until 429"
+sep "15a. CSRF — GET /csrf-demo (sets sparky_csrf cookie)"
+CSRF_HEADERS=$(curl -s -i -c /tmp/sparky_csrf_cookies "$BASE/csrf-demo")
+echo "$CSRF_HEADERS" | grep -iE "^HTTP/|set-cookie|sparky_csrf" | head -5
+CSRF_TOKEN=$(grep sparky_csrf /tmp/sparky_csrf_cookies 2>/dev/null | awk '{print $NF}')
+echo "token=$CSRF_TOKEN"
+echo ""
+
+sep "15b. CSRF — POST /csrf-demo without token (expect 403)"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" -X POST "$BASE/csrf-demo" \
+  -H "Content-Type: application/json" \
+  -d '{"foo":"bar"}'
+echo ""
+
+sep "15c. CSRF — POST /csrf-demo with header + cookie (expect 200)"
+curl -s -X POST "$BASE/csrf-demo" \
+  -b /tmp/sparky_csrf_cookies \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -d '{"foo":"bar"}'
+echo ""
+rm -f /tmp/sparky_csrf_cookies
+
+# ─────────────────────────────────────────────────────────────────────
+sep "16a. OpenAPI — GET /openapi.json (truncated)"
+curl -s "$BASE/openapi.json" | head -c 400
+echo "..."
+echo ""
+
+sep "16b. OpenAPI — GET /docs (Swagger UI, HTML)"
+curl -s -o /dev/null -w "HTTP %{http_code}  content-type=%{content_type}\n" "$BASE/docs"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "17a. Health — GET /health (liveness)"
+curl -s "$BASE/health"
+echo ""
+
+sep "17b. Health — GET /ready (readiness with checks)"
+curl -s "$BASE/ready"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "18. Metrics — GET /metrics (Prometheus exposition)"
+curl -s "$BASE/metrics" | grep -E "^# (HELP|TYPE)|_total|_duration_seconds_bucket" | head -20
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+sep "19. Rate limiting — send requests until 429"
 for i in $(seq 1 105); do
   RESP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/hello")
   if [ "$RESP" != "200" ]; then
@@ -145,55 +192,55 @@ done
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "16. 404 — GET /nonexistent"
+sep "20. 404 — GET /nonexistent"
 curl -s "$BASE/nonexistent"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "17. 405 — POST /hello (only GET allowed)"
+sep "21. 405 — POST /hello (only GET allowed)"
 curl -s -X POST "$BASE/hello"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "18. Multipart upload — POST /upload"
+sep "22. Multipart upload — POST /upload"
 curl -s -X POST "$BASE/upload" \
   -F "description=My avatar" \
   -F "avatar=@/dev/null;filename=photo.png;type=image/png"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "19. SSE — GET /events (first 5 events, 3s timeout)"
+sep "23. SSE — GET /events (first 5 events, 3s timeout)"
 curl -s -N --max-time 3 "$BASE/events" 2>/dev/null || true
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "20a. Structured errors — GET /items/42 (200 OK)"
+sep "24a. Structured errors — GET /items/42 (200 OK)"
 curl -s "$BASE/items/42"
 echo ""
 
-sep "20b. Structured errors — GET /items/0 (404 NotFound)"
+sep "24b. Structured errors — GET /items/0 (404 NotFound)"
 curl -s "$BASE/items/0"
 echo ""
 
-sep "20c. Structured errors — GET /items/-1 (403 Forbidden)"
+sep "24c. Structured errors — GET /items/-1 (403 Forbidden)"
 curl -s "$BASE/items/-1"
 echo ""
 
-sep "20d. Structured errors — GET /items/x (400 BadRequest)"
+sep "24d. Structured errors — GET /items/x (400 BadRequest)"
 curl -s "$BASE/items/x"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "21a. Dependency injection — GET /profile (without token = 401)"
+sep "25a. Dependency injection — GET /profile (without token = 401)"
 curl -s "$BASE/profile"
 echo ""
 
-sep "21b. Dependency injection — GET /profile (with token = injected user)"
+sep "25b. Dependency injection — GET /profile (with token = injected user)"
 curl -s "$BASE/profile" -H "Authorization: $TOKEN"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-sep "22. Security headers — check headers on GET /hello"
+sep "26. Security headers — check headers on GET /hello"
 curl -s -i "$BASE/hello" | grep -iE "x-frame-options|content-security-policy|referrer-policy|x-content-type-options|strict-transport|x-xss-protection|cross-origin"
 echo ""
 

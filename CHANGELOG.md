@@ -6,12 +6,15 @@
 
 ### Novas Funcionalidades
 
+- **Health checks (`/health` + `/ready`)**: Novo `HealthCheckConfig` em `Sparky.single` com endpoints built-in para liveness e readiness. Cada check é um `HealthCheck` plugável executado em paralelo com timeout configurável; exceções e timeouts viram `HealthStatus.down` automaticamente. Status geral agrega o pior resultado (`DOWN > DEGRADED > UP`), com HTTP `503` quando `DOWN` (e opcionalmente quando `DEGRADED` via `failReadinessOnDegraded`). Suporta `authGuard` para proteger os probes. Body JSON no formato `{status, checks: {name: {status, message?, details?}}}`.
+- **Task scheduling (cron + intervalo)**: Novo `SchedulerConfig` em `Sparky.single`. `ScheduledTask(expression: '0 */5 * * *', job: ...)` para cron de 5 campos (com aliases `jan-dec` / `sun-sat`, ranges, listas e `*/N`) e `ScheduledTask.every(interval: Duration(...), job: ...)` para cadência fixa. Scheduler sobe junto com o servidor e para em `close()` aguardando jobs em voo. `onError` recebe exceções sem derrubar o loop; `allowOverlap` controla se ticks rodam em paralelo (default `true` no cron, `false` no `every`).
 - **`MetricsConfig.authGuard`**: Novo campo opcional `MiddlewareNullable? authGuard` em `MetricsConfig` que, quando fornecido, é anexado à rota `/metrics` como guard. Protege o scrape contra acesso não autenticado (ex.: validar token bearer, IP allowlist) sem precisar expor um listener separado.
 - **`OpenApiOperation.parameters`**: Novo campo `List<Map<String, Object?>>? parameters` em `OpenApiOperation` para documentar parâmetros de query, header e cookie. São mescladas com os path params auto-gerados; em caso de colisão (`name|in`), o valor do usuário prevalece — isso permite refinar o `schema` de path params (ex.: `integer`/`uuid` em vez do default `string`).
 
 ### Correções
 
 - **Cache de response vs. guards**: Rotas estáticas com `guards` não-vazios não são mais cacheadas. O cache anterior armazenava a primeira response (tipicamente o 401 de um guard que rejeitava) e a servia para todas as chamadas subsequentes, anulando o guard. Agora `isCached` é consultado apenas quando `route.guards.isEmpty`.
+- **Swagger UI em `/docs` ficava em branco com `SecurityHeadersConfig`**: A CSP default (`default-src 'self'`) bloqueava o CDN e o script inline do Swagger UI. A rota `/docs` agora emite um `Content-Security-Policy` próprio que libera a origem do `swaggerUiCdnBase` (scripts/styles/imgs/fonts) e mantém `connect-src 'self'` para o fetch do spec — a CSP global continua valendo para as demais rotas.
 
 ---
 

@@ -74,8 +74,7 @@ void main() async {
   });
 
   final register = RouteHttp.post('/register',
-      openApi: registerSchema.openApiOperation,
-      middleware: (request) async {
+      openApi: registerSchema.openApiOperation, middleware: (request) async {
     final body = await request.getJsonBody();
     final errors = registerSchema.validate(body);
     if (errors.isNotEmpty) {
@@ -268,16 +267,87 @@ void main() async {
   const securityHeaders = SecurityHeadersConfig();
 
   // ─────────────────────────────────────────────────────────────────────
-  // 22. Start the server with all features
+  // 22. CSRF protection (double-submit cookie)
+  // ─────────────────────────────────────────────────────────────────────
+  // CsrfConfig is usually installed globally in pipelineBefore. Here it is
+  // attached as a route guard so the demo does not require every POST in
+  // this example to carry a token. In production with cookie-based sessions,
+  // prefer `pipelineBefore`.
+  const csrf = CsrfConfig(
+    cookieSecure: false, // local HTTP demo
+  );
+  final csrfMw = csrf.createMiddleware();
+
+  // Single route accepting both GET (emits cookie) and POST (validates token);
+  // Sparky uses path as the route key, so GET/POST are combined via
+  // acceptedMethods.
+  final csrfDemo = RouteHttp(
+    '/csrf-demo',
+    acceptedMethods: const [AcceptedMethods.get, AcceptedMethods.post],
+    guards: [csrfMw],
+    middleware: (r) async {
+      if (r.method == 'POST') {
+        final body = await r.getJsonBody();
+        return Response.ok(body: {'received': body, 'csrf': 'ok'});
+      }
+      return const Response.ok(body: {
+        'msg': 'Token set in Set-Cookie. Send it back in X-CSRF-Token.',
+      });
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 23. Prometheus metrics (/metrics)
+  // ─────────────────────────────────────────────────────────────────────
+  final metrics = MetricsConfig(
+    // Hide noisy probes from series (liveness/readiness are scraped too often).
+    ignorePaths: {'/health', '/ready'},
+  );
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 24. Health checks (/health + /ready)
+  // ─────────────────────────────────────────────────────────────────────
+  final health = HealthCheckConfig(
+    readinessChecks: {
+      // Replace with a real ping in production (db.ping(), redis.ping(), etc).
+      'fake-db': () async {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+        return const HealthCheckResult.up(details: {'latencyMs': 1});
+      },
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 25. Task scheduling (cron + fixed interval)
+  // ─────────────────────────────────────────────────────────────────────
+  final scheduler = SchedulerConfig(tasks: [
+    ScheduledTask(
+      name: 'nightly-cleanup',
+      expression: '0 3 * * *', // every day at 03:00
+      job: () => print('[cron] running nightly cleanup'),
+    ),
+    ScheduledTask.every(
+      interval: const Duration(minutes: 5),
+      name: 'heartbeat',
+      job: () => print('[cron] heartbeat tick'),
+    ),
+  ]);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 26. Start the server with all features
   // ─────────────────────────────────────────────────────────────────────
   final server = Sparky.single(
     openApi: const OpenApiConfig(
       info: OpenApiInfo(
         title: 'Sparky Example API',
         version: '1.0.0',
-        description: 'Demo server from sparky_example.dart — open /docs for Swagger UI.',
+        description:
+            'Demo server from sparky_example.dart — open /docs for Swagger UI.',
       ),
     ),
+    metrics: metrics,
+    health: health,
+    scheduler: scheduler,
     routes: [
       hello,
       userById,
@@ -296,6 +366,7 @@ void main() async {
       sse,
       itemRoute,
       profile,
+      csrfDemo,
       ...apiRoutes.flatten(),
     ],
     port: 3000,
@@ -323,7 +394,7 @@ void main() async {
   );
 
   // ─────────────────────────────────────────────────────────────────────
-  // 24. Graceful shutdown
+  // 27. Graceful shutdown
   // ─────────────────────────────────────────────────────────────────────
   await server.ready;
   print(

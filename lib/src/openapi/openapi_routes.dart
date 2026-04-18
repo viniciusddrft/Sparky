@@ -43,6 +43,21 @@ String buildSwaggerUiHtml({
 
 String _jsString(String s) => jsonStringEscape(s);
 
+/// Extracts `scheme://host[:port]` from [url], falling back to the input when
+/// parsing fails. Used to scope CSP to the Swagger UI CDN origin.
+String _originOf(String url) {
+  try {
+    final uri = Uri.parse(url);
+    if (uri.hasScheme && uri.host.isNotEmpty) {
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      return '${uri.scheme}://${uri.host}$port';
+    }
+  } catch (_) {
+    // fall through
+  }
+  return url;
+}
+
 /// Escapes [s] for use inside a single-quoted JavaScript string literal.
 String jsonStringEscape(String s) {
   final buf = StringBuffer("'");
@@ -92,11 +107,26 @@ List<Route> mergeOpenApiRoutes(List<Route> routes, OpenApiConfig? openApi) {
     cdnBase: openApi.swaggerUiCdnBase,
   );
 
+  // Swagger UI loads JS/CSS from a CDN and uses an inline bootstrap script, so
+  // the default "default-src 'self'" CSP from SecurityHeadersConfig would leave
+  // the page blank. Emit a scoped CSP on the /docs response that whitelists the
+  // CDN origin and allows the inline loader.
+  final cdnOrigin = _originOf(openApi.swaggerUiCdnBase);
+  final docsCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' $cdnOrigin",
+    "style-src 'self' 'unsafe-inline' $cdnOrigin",
+    "img-src 'self' data: $cdnOrigin",
+    "font-src 'self' data: $cdnOrigin",
+    "connect-src 'self'",
+  ].join('; ');
+
   final docsRoute = RouteHttp.get(
     docsPath,
     middleware: (_) async => Response.ok(
       body: html,
       contentType: ContentType.html,
+      headers: {'Content-Security-Policy': docsCsp},
     ),
   );
 

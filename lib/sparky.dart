@@ -28,3 +28,6 @@ export 'src/metrics/prometheus_metrics.dart';
 export 'src/openapi/openapi_types.dart';
 export 'src/openapi/openapi_document.dart';
 export 'src/openapi/openapi_routes.dart';
+export 'src/health/health_check.dart';
+export 'src/scheduler/scheduler.dart';
+export 'src/scheduler/cron_expression.dart';
