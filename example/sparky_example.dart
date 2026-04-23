@@ -52,7 +52,7 @@ void main() async {
   // 5. Body parsing (JSON and form-data)
   // ─────────────────────────────────────────────────────────────────────
   final echo = RouteHttp.post('/echo', middleware: (request) async {
-    final json = await request.getJsonBody();
+    final json = await request.body.json();
     return Response.ok(body: {'echo': json});
   });
 
@@ -75,7 +75,7 @@ void main() async {
 
   final register = RouteHttp.post('/register',
       openApi: registerSchema.openApiOperation, middleware: (request) async {
-    final body = await request.getJsonBody();
+    final body = await request.body.json();
     final errors = registerSchema.validate(body);
     if (errors.isNotEmpty) {
       return Response.badRequest(body: {'errors': errors});
@@ -99,7 +99,7 @@ void main() async {
   const authJwt = AuthJwt(secretKey: 'my-secret-key');
 
   final login = RouteHttp.post('/login', middleware: (request) async {
-    final body = await request.getJsonBody();
+    final body = await request.body.json();
     final token = authJwt.generateToken(
       {'username': body['user'] ?? ''},
       expiresIn: const Duration(hours: 2),
@@ -110,7 +110,7 @@ void main() async {
   // ─────────────────────────────────────────────────────────────────────
   // 9. Guards (per-route auth middleware)
   // ─────────────────────────────────────────────────────────────────────
-  Future<Response?> authGuard(HttpRequest request) async {
+  Future<Response?> authGuard(SparkyRequest request) async {
     final token = request.headers.value('Authorization');
     if (token != null && authJwt.verifyToken(token)) return null;
     return const Response.unauthorized(body: {'error': 'Unauthorized'});
@@ -194,7 +194,7 @@ void main() async {
   // 17. Multipart upload (binary-safe file upload)
   // ─────────────────────────────────────────────────────────────────────
   final upload = RouteHttp.post('/upload', middleware: (request) async {
-    final form = await request.getMultipartData();
+    final form = await request.body.multipart();
     final description = form.fields['description'] ?? 'no description';
     final files = form.fileList
         .map((f) => {
@@ -241,7 +241,7 @@ void main() async {
   // ─────────────────────────────────────────────────────────────────────
   // 20. Dependency injection per request
   // ─────────────────────────────────────────────────────────────────────
-  Future<Response?> diGuard(HttpRequest request) async {
+  Future<Response?> diGuard(SparkyRequest request) async {
     final token = request.headers.value('Authorization');
     if (token == null || !authJwt.verifyToken(token)) {
       return const Response.unauthorized(body: {'error': 'Unauthorized'});
@@ -287,7 +287,7 @@ void main() async {
     guards: [csrfMw],
     middleware: (r) async {
       if (r.method == 'POST') {
-        final body = await r.getJsonBody();
+        final body = await r.body.json();
         return Response.ok(body: {'received': body, 'csrf': 'ok'});
       }
       return const Response.ok(body: {
@@ -369,7 +369,12 @@ void main() async {
       csrfDemo,
       ...apiRoutes.flatten(),
     ],
-    port: 3000,
+    // Server binding (port/ip/shared/securityContext)
+    // HTTPS — uncomment with your certificate:
+    // securityContext: SecurityContext()
+    //   ..useCertificateChain('cert.pem')
+    //   ..usePrivateKey('key.pem'),
+    server: const ServerOptions(port: 3000),
     // Pipelines — CORS, rate limit, security headers, static files
     pipelineBefore: Pipeline()
       ..add(cors.createMiddleware())
@@ -378,19 +383,15 @@ void main() async {
       ..add(staticFiles.createMiddleware()),
     // Logging
     logConfig: LogConfig.showLogs,
-    // Security
-    maxBodySize: 10 * 1024 * 1024, // 10 MB
-    requestTimeout: const Duration(seconds: 30),
+    // Per-request limits
+    limits: const LimitsConfig(
+      maxBodySize: 10 * 1024 * 1024, // 10 MB
+      requestTimeout: Duration(seconds: 30),
+    ),
     // Gzip
-    enableGzip: true,
-    gzipMinLength: 1024,
-    // Cache
-    cacheTtl: const Duration(seconds: 60),
-    cacheMaxEntries: 500,
-    // HTTPS — uncomment with your certificate:
-    // securityContext: SecurityContext()
-    //   ..useCertificateChain('cert.pem')
-    //   ..usePrivateKey('key.pem'),
+    compression: const CompressionConfig(enableGzip: true, gzipMinLength: 1024),
+    // Response cache
+    cache: const CacheConfig(ttl: Duration(seconds: 60), maxEntries: 500),
   );
 
   // ─────────────────────────────────────────────────────────────────────

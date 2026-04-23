@@ -108,9 +108,10 @@ final class SparkyTestClient {
 
   /// Boots a Sparky server on a random port and returns a test client.
   ///
-  /// All server configuration options are supported. The server is
-  /// always created with `port: 0` (OS-assigned) and `logConfig: LogConfig.none`
-  /// by default to keep test output clean.
+  /// Binds on `port: 0` (OS-assigned) and uses `LogConfig.none` so tests stay
+  /// quiet. Pass [limits], [cache], and [compression] config objects to
+  /// exercise those code paths; [server] is not exposed because the test
+  /// client always uses port 0.
   static Future<SparkyTestClient> boot({
     required List<Route> routes,
     OpenApiConfig? openApi,
@@ -120,12 +121,9 @@ final class SparkyTestClient {
     Route? routeNotFound,
     Pipeline? pipelineBefore,
     Pipeline? pipelineAfter,
-    int? maxBodySize,
-    Duration? requestTimeout,
-    bool enableGzip = false,
-    int gzipMinLength = 0,
-    Duration? cacheTtl,
-    int? cacheMaxEntries,
+    LimitsConfig limits = const LimitsConfig(),
+    CacheConfig cache = const CacheConfig(),
+    CompressionConfig compression = const CompressionConfig(),
   }) async {
     final server = Sparky.single(
       routes: routes,
@@ -133,17 +131,14 @@ final class SparkyTestClient {
       metrics: metrics,
       health: health,
       scheduler: scheduler,
-      port: 0,
+      server: const ServerOptions(port: 0),
+      limits: limits,
+      cache: cache,
+      compression: compression,
       logConfig: LogConfig.none,
       routeNotFound: routeNotFound,
       pipelineBefore: pipelineBefore,
       pipelineAfter: pipelineAfter,
-      maxBodySize: maxBodySize,
-      requestTimeout: requestTimeout,
-      enableGzip: enableGzip,
-      gzipMinLength: gzipMinLength,
-      cacheTtl: cacheTtl,
-      cacheMaxEntries: cacheMaxEntries,
     );
     await server.ready;
     return SparkyTestClient._(server);

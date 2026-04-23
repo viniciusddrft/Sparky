@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:sparky/src/extensions/http_request.dart';
+import 'package:sparky/src/request/sparky_request.dart';
 import 'package:sparky/src/response/response.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 
@@ -16,7 +16,7 @@ import 'package:sparky/src/types/sparky_types.dart';
 /// [headerName] from your front-end.
 ///
 /// **Multipart** requests do not read the body here (the stream would conflict
-/// with [HttpRequest.getMultipartData] downstream); send the token in
+/// with `request.body.multipart()` downstream); send the token in
 /// [headerName] for `multipart/form-data`.
 ///
 /// When [ignoreRequestsWithBearer] is `true` (default), requests with an
@@ -84,7 +84,7 @@ final class CsrfConfig {
 
   /// Pipeline middleware: sets the cookie on safe requests; validates on others.
   MiddlewareNullable createMiddleware() {
-    return (HttpRequest request) async {
+    return (SparkyRequest request) async {
       final method = request.method.toUpperCase();
 
       if (safeMethods.contains(method)) {
@@ -115,7 +115,7 @@ final class CsrfConfig {
     };
   }
 
-  void _ensureCsrfCookie(HttpRequest request) {
+  void _ensureCsrfCookie(SparkyRequest request) {
     final existing = request.getCookie(cookieName)?.value;
     if (_isValidToken(existing)) return;
 
@@ -137,7 +137,7 @@ final class CsrfConfig {
     return base64Url.encode(bytes).replaceAll('=', '');
   }
 
-  Future<String?> _readSubmittedToken(HttpRequest request) async {
+  Future<String?> _readSubmittedToken(SparkyRequest request) async {
     final fromHeader = request.headers.value(headerName);
     if (fromHeader != null && fromHeader.isNotEmpty) {
       return fromHeader.trim();
@@ -147,13 +147,13 @@ final class CsrfConfig {
     final mime = ct?.mimeType;
 
     if (mime == 'application/x-www-form-urlencoded') {
-      final form = await request.getFormData();
+      final form = await request.body.form();
       final v = form[formFieldName];
       if (v != null && v.isNotEmpty) return v;
     }
 
     if (mime == 'application/json' || mime == 'application/problem+json') {
-      final map = await request.getJsonBody();
+      final map = await request.body.json();
       final v = map[jsonFieldName];
       if (v == null) return null;
       if (v is String) return v;

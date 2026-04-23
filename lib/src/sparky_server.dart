@@ -6,9 +6,10 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:sparky/src/sparky_server_base.dart';
 import 'package:sparky/src/types/sparky_types.dart';
-import 'errors/http_exception.dart';
 import 'errors/sparky_error.dart';
-import 'extensions/http_request.dart';
+import 'handler/error_body.dart';
+import 'handler/error_response.dart';
+import 'request/sparky_request.dart';
 import 'response/response.dart';
 import 'route/route_base.dart';
 
@@ -27,49 +28,129 @@ base class Sparky extends SparkyBase with Logs {
   ///
   /// Use this for standard deployments where you don't need multi-core
   /// scaling via isolates. For cluster mode, use [Sparky.cluster].
+  ///
+  /// Runtime knobs are grouped into four config objects — [server]
+  /// (port/ip/shared/securityContext), [limits] (requestTimeout/maxBodySize),
+  /// [cache] (ttl/maxEntries), and [compression] (enableGzip/gzipMinLength) —
+  /// each with `const` defaults so simple setups stay concise.
   Sparky.single({
     required super.routes,
     super.openApi,
     super.metrics,
     super.health,
     super.scheduler,
-    super.port,
-    super.ip,
-    super.shared,
+    super.server,
+    super.limits,
+    super.cache,
+    super.compression,
     super.routeNotFound,
     super.logConfig,
     super.logType,
+    super.logFormat,
     super.logFilePath,
     super.pipelineBefore,
     super.pipelineAfter,
-    super.securityContext,
-    super.requestTimeout,
-    super.maxBodySize,
-    super.enableGzip,
-    super.gzipMinLength,
-    super.cacheTtl,
-    super.cacheMaxEntries,
   }) {
     _init();
   }
 
   late final HttpServer _server;
-  late final Map<String, Route> _staticRouteMap;
-  late final List<Route> _dynamicRoutes;
+  // Static HTTP routes: path -> (method -> route).
+  late final Map<String, Map<String, Route>> _staticHttpRoutes;
+  // Static WebSocket routes: path -> route.
+  late final Map<String, Route> _staticWsRoutes;
+  late final List<Route> _dynamicHttpRoutes;
+  late final List<Route> _dynamicWsRoutes;
   StreamSubscription<HttpRequest>? _subscription;
+
+  // Per-isolate monotonic counter for request IDs. 32-bit wrap is intentional:
+  // IDs are scoped to a single isolate and need to be unique only across the
+  // in-flight window, not forever.
+  int _requestCounter = 0;
+
+  String _nextRequestId() {
+    _requestCounter = (_requestCounter + 1) & 0xFFFFFFFF;
+    return _requestCounter.toRadixString(16).padLeft(8, '0');
+  }
 
   void _init() {
     if (routes.isEmpty) {
       throw ErrorRouteEmpty();
     }
-    if (_checkRepeatedRoutes(routes.map((e) => e.name))) {
-      throw RoutesRepeated();
+
+    final httpStatic = <String, Map<String, Route>>{};
+    final wsStatic = <String, Route>{};
+    final httpDynamic = <Route>[];
+    final wsDynamic = <Route>[];
+
+    for (final route in routes) {
+      final isWs = !route.isHttpRoute;
+      final isDynamic = route.isDynamic;
+
+      if (isWs) {
+        if (isDynamic) {
+          for (final existing in wsDynamic) {
+            if (existing.path == route.path) {
+              throw RoutesRepeated.duplicate(route.path);
+            }
+          }
+          for (final existing in httpDynamic) {
+            if (existing.path == route.path) {
+              throw RoutesRepeated.duplicate(route.path);
+            }
+          }
+          wsDynamic.add(route);
+        } else {
+          if (wsStatic.containsKey(route.path) ||
+              httpStatic.containsKey(route.path)) {
+            throw RoutesRepeated.duplicate(route.path);
+          }
+          wsStatic[route.path] = route;
+        }
+        continue;
+      }
+
+      final methods = route.acceptedMethods;
+      if (methods == null || methods.isEmpty) continue;
+
+      if (!isDynamic) {
+        if (wsStatic.containsKey(route.path)) {
+          throw RoutesRepeated.duplicate(route.path);
+        }
+        final perMethod =
+            httpStatic.putIfAbsent(route.path, () => <String, Route>{});
+        for (final m in methods) {
+          if (perMethod.containsKey(m.text)) {
+            throw RoutesRepeated.duplicate('${m.text} ${route.path}');
+          }
+          perMethod[m.text] = route;
+        }
+      } else {
+        for (final existing in wsDynamic) {
+          if (existing.path == route.path) {
+            throw RoutesRepeated.duplicate(route.path);
+          }
+        }
+        for (final existing in httpDynamic) {
+          if (existing.path != route.path) continue;
+          final existingMethods = existing.acceptedMethods;
+          if (existingMethods == null) continue;
+          for (final m in methods) {
+            if (existingMethods.any((em) => em.text == m.text)) {
+              throw RoutesRepeated.duplicate('${m.text} ${route.path}');
+            }
+          }
+        }
+        httpDynamic.add(route);
+      }
     }
-    _staticRouteMap = {
-      for (final route in routes)
-        if (!route.isDynamic) route.name: route
-    };
-    _dynamicRoutes = routes.where((r) => r.isDynamic).toList();
+
+    _staticHttpRoutes = httpStatic;
+    _staticWsRoutes = wsStatic;
+    _dynamicHttpRoutes = httpDynamic;
+    _dynamicWsRoutes = wsDynamic;
+    scheduler?.defaultOnError = (task, error, stack) =>
+        _errorServerLog('[scheduler] ${task.name} failed: $error');
     _startFuture = _start();
   }
 
@@ -84,25 +165,74 @@ base class Sparky extends SparkyBase with Logs {
   /// Must be called after [ready] completes.
   int get actualPort => _server.port;
 
-  bool _checkRepeatedRoutes(Iterable<String> routes) {
-    final checkedElements = <String>{};
-    return routes.any((name) => !checkedElements.add(name));
-  }
+  /// Resolves a route for the given [path] and [method].
+  ///
+  /// Returns a record where:
+  /// - `route` is the matched route, or `null` if no path matches or only the
+  ///   path matches but the method doesn't.
+  /// - `methodNotAllowed` is `true` when the path matched at least one route
+  ///   but no route accepts [method] — caller should respond with 405.
+  /// - `allowedMethods` lists the methods accepted on [path] when
+  ///   `methodNotAllowed` is true (used to populate the `Allow` header per
+  ///   RFC 7231 §6.5.5). Empty in all other cases.
+  ///
+  /// Path parameters are set on [request] only for the route that will be
+  /// served (not for routes whose path matches but method doesn't).
+  ({Route? route, bool methodNotAllowed, List<String> allowedMethods})
+      _resolveRoute(String path, String method, SparkyRequest request) {
+    final ws = _staticWsRoutes[path];
+    if (ws != null) {
+      return (route: ws, methodNotAllowed: false, allowedMethods: const []);
+    }
 
-  /// Resolves a route for the given [path], setting path params on [request].
-  /// Returns `null` if no route matches.
-  Route? _resolveRoute(String path, HttpRequest request) {
-    final staticRoute = _staticRouteMap[path];
-    if (staticRoute != null) return staticRoute;
+    final byMethod = _staticHttpRoutes[path];
+    if (byMethod != null) {
+      final exact = byMethod[method];
+      if (exact != null) {
+        return (
+          route: exact,
+          methodNotAllowed: false,
+          allowedMethods: const [],
+        );
+      }
+      return (
+        route: null,
+        methodNotAllowed: true,
+        allowedMethods: byMethod.keys.toList(),
+      );
+    }
 
-    for (final route in _dynamicRoutes) {
+    for (final route in _dynamicWsRoutes) {
       final params = route.matchPath(path);
       if (params != null) {
         request.pathParams = params;
-        return route;
+        return (route: route, methodNotAllowed: false, allowedMethods: const []);
       }
     }
-    return null;
+
+    final allowedFromDynamic = <String>{};
+    for (final route in _dynamicHttpRoutes) {
+      final params = route.matchPath(path);
+      if (params == null) continue;
+      final methods = route.acceptedMethods;
+      if (methods == null) continue;
+      if (methods.any((m) => m.text == method)) {
+        request.pathParams = params;
+        return (route: route, methodNotAllowed: false, allowedMethods: const []);
+      }
+      for (final m in methods) {
+        allowedFromDynamic.add(m.text);
+      }
+    }
+
+    if (allowedFromDynamic.isNotEmpty) {
+      return (
+        route: null,
+        methodNotAllowed: true,
+        allowedMethods: allowedFromDynamic.toList(),
+      );
+    }
+    return (route: null, methodNotAllowed: false, allowedMethods: const []);
   }
 
   bool _isCacheableMethod(String method) => method == 'GET' || method == 'HEAD';
@@ -117,210 +247,8 @@ base class Sparky extends SparkyBase with Logs {
     scheduler?.start();
 
     _subscription = _server.listen(
-      (HttpRequest request) async {
-        final pm = prometheusMetrics;
-        pm?.requestStarted();
-        final sw = Stopwatch()..start();
-        void recordMetrics(int statusCode) {
-          pm?.recordHttpRequest(
-            method: request.method,
-            path: request.uri.path,
-            statusCode: statusCode,
-            elapsed: sw.elapsed,
-          );
-        }
-
-        try {
-          try {
-            var upgradedToWebSocket = false;
-            if (maxBodySize != null) {
-              request.setMaxBodySize(maxBodySize!);
-              final contentLength = request.contentLength;
-              if (contentLength > maxBodySize!) {
-                final response = request.response;
-                response
-                  ..statusCode = HttpStatus.requestEntityTooLarge
-                  ..headers.contentType = ContentType.json
-                  ..write(
-                      '{"errorCode":"413","message":"Request Entity Too Large"}');
-                await response.close();
-                recordMetrics(HttpStatus.requestEntityTooLarge);
-                return;
-              }
-              if (contentLength < 0 &&
-                  request.method != 'GET' &&
-                  request.method != 'HEAD' &&
-                  request.method != 'OPTIONS') {
-                await request.preloadBodyWithLimit(maxBodySize!);
-              }
-            }
-
-            Future<Response> resolveResponse() async {
-              final path = request.uri.path;
-
-              final Response? pipelineBeforeResponse =
-                  await runPipeline(pipelineBefore, request);
-
-              final route = _resolveRoute(path, request);
-
-              if (WebSocketTransformer.isUpgradeRequest(request) &&
-                  route != null) {
-                final websocket = await WebSocketTransformer.upgrade(request);
-                route.middlewareWebSocket!(websocket);
-                upgradedToWebSocket = true;
-                return const Response.ok(body: '');
-              } else {
-                final Response routeResponse;
-
-                if (pipelineBeforeResponse == null) {
-                  // Cache only applies to static routes (no :param segments),
-                  // idempotent methods (GET, HEAD), and routes without guards
-                  // (guards evaluate per-request state, e.g. auth). Dynamic
-                  // routes and stream responses are intentionally excluded.
-                  final cacheable = route != null &&
-                      !route.isDynamic &&
-                      route.guards.isEmpty &&
-                      _isCacheableMethod(request.method);
-                  if (cacheable && isCached(route, request.method)) {
-                    routeResponse = getCachedResponse(route, request.method);
-                  } else {
-                    routeResponse = await _internalHandler(request, route);
-                    if (cacheable && !routeResponse.isStream) {
-                      cacheResponse(route, request.method, routeResponse);
-                    }
-                  }
-                } else {
-                  routeResponse = pipelineBeforeResponse;
-                }
-
-                return routeResponse;
-              }
-            }
-
-            final Response routeResponse;
-            if (requestTimeout != null) {
-              final handlerFuture = resolveResponse();
-              routeResponse =
-                  await handlerFuture.timeout(requestTimeout!, onTimeout: () {
-                request.markCancelled();
-                handlerFuture.ignore();
-                throw TimeoutException('Request timeout', requestTimeout);
-              });
-            } else {
-              routeResponse = await resolveResponse();
-            }
-
-            if (upgradedToWebSocket) {
-              await runPipeline(pipelineAfter, request);
-              recordMetrics(HttpStatus.switchingProtocols);
-              return;
-            }
-
-            final response = request.response;
-            response
-              ..headers.contentType =
-                  routeResponse.contentType ?? ContentType.json
-              ..statusCode = routeResponse.status;
-            if (routeResponse.headers != null) {
-              routeResponse.headers!.forEach((key, value) {
-                response.headers.set(key, value);
-              });
-            }
-            if (routeResponse.cookies != null) {
-              response.cookies.addAll(routeResponse.cookies!);
-            }
-
-            if (routeResponse.isStream) {
-              final stream = routeResponse.bodyStream!;
-              final canGzipStream = enableGzip &&
-                  _isCompressibleContentType(routeResponse.contentType) &&
-                  request.headers[HttpHeaders.acceptEncodingHeader]
-                          ?.any((e) => e.contains('gzip')) ==
-                      true;
-              if (canGzipStream) {
-                response.headers.chunkedTransferEncoding = true;
-                response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
-                response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
-                await response.addStream(stream.transform(gzip.encoder));
-              } else {
-                await response.addStream(stream);
-              }
-            } else {
-              final responseBytes = routeResponse.bodyBytes;
-              final canGzip = enableGzip &&
-                  !routeResponse.isBinary &&
-                  responseBytes.length >= gzipMinLength &&
-                  request.headers[HttpHeaders.acceptEncodingHeader]
-                          ?.any((e) => e.contains('gzip')) ==
-                      true;
-              if (canGzip) {
-                response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
-                response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
-                response.add(gzip.encode(responseBytes));
-              } else {
-                response.add(responseBytes);
-              }
-            }
-            await response.close();
-
-            await runPipeline(pipelineAfter, request);
-            _requestServerLog(request, routeResponse);
-            recordMetrics(routeResponse.status);
-          } on BodyTooLargeException {
-            _errorServerLog('Request entity too large: ${request.uri.path}');
-            try {
-              final response = request.response;
-              response
-                ..statusCode = HttpStatus.requestEntityTooLarge
-                ..headers.contentType = ContentType.json
-                ..write(
-                    '{"errorCode":"413","message":"Request Entity Too Large"}');
-              await response.close();
-            } catch (_) {}
-            recordMetrics(HttpStatus.requestEntityTooLarge);
-          } on TimeoutException {
-            _errorServerLog('Request timeout: ${request.uri.path}');
-            try {
-              final response = request.response;
-              response
-                ..statusCode = HttpStatus.requestTimeout
-                ..headers.contentType = ContentType.json
-                ..write('{"errorCode":"408","message":"Request Timeout"}');
-              await response.close();
-            } catch (_) {}
-            recordMetrics(HttpStatus.requestTimeout);
-          } on HttpException catch (e) {
-            _errorServerLog(
-                'HTTP ${e.statusCode}: ${e.message} (${request.uri.path})');
-            try {
-              final response = request.response;
-              response
-                ..statusCode = e.statusCode
-                ..headers.contentType = ContentType.json
-                ..write(json.encode(e.toJson()));
-              await response.close();
-            } catch (_) {}
-            recordMetrics(e.statusCode);
-          } catch (e) {
-            _errorServerLog(e);
-            try {
-              final response = request.response;
-              response
-                ..statusCode = HttpStatus.internalServerError
-                ..headers.contentType = ContentType.json
-                ..write(
-                    '{"errorCode":"500","message":"Internal Server Error"}');
-              await response.close();
-            } catch (_) {}
-            recordMetrics(HttpStatus.internalServerError);
-          }
-        } finally {
-          pm?.requestFinished();
-        }
-      },
-      onError: (e) {
-        _errorServerLog(e);
-      },
+      _handleRequest,
+      onError: _errorServerLog,
       onDone: () {
         _file?.flush();
         _file?.close();
@@ -328,27 +256,191 @@ base class Sparky extends SparkyBase with Logs {
     );
   }
 
-  Future<Response> _internalHandler(HttpRequest request, Route? route) async {
-    if (route != null) {
-      final acceptedMethods = route.acceptedMethods?.map((e) => e.text);
-      if (acceptedMethods != null &&
-          acceptedMethods.contains(request.method) &&
-          route.middleware != null) {
-        for (final guard in route.guards) {
-          final guardResponse = await guard(request);
-          if (guardResponse != null) return guardResponse;
+  Future<void> _handleRequest(HttpRequest raw) async {
+    final request = SparkyRequest(raw)..requestId = _nextRequestId();
+    final pm = prometheusMetrics;
+    pm?.requestStarted();
+    final sw = Stopwatch()..start();
+    var statusForMetrics = HttpStatus.internalServerError;
+
+    try {
+      var upgradedToWebSocket = false;
+
+      if (maxBodySize != null) {
+        request.setMaxBodySize(maxBodySize!);
+        final contentLength = request.contentLength;
+        if (contentLength > maxBodySize!) {
+          throw BodyTooLargeException(maxBodySize!);
         }
-        return route.middleware!(request);
+        if (contentLength < 0 &&
+            request.method != 'GET' &&
+            request.method != 'HEAD' &&
+            request.method != 'OPTIONS') {
+          await request.preloadBodyWithLimit(maxBodySize!);
+        }
       }
-      return const Response.methodNotAllowed(
-          body: '{"errorCode":"405","message":"Method Not Allowed"}');
+
+      Future<Response> resolveResponse() async {
+        final path = request.uri.path;
+        final pipelineBeforeResponse =
+            await runPipeline(pipelineBefore, request);
+
+        final lookup = _resolveRoute(path, request.method, request);
+        final route = lookup.route;
+
+        if (WebSocketTransformer.isUpgradeRequest(request.raw) &&
+            route != null &&
+            !route.isHttpRoute) {
+          final websocket = await WebSocketTransformer.upgrade(request.raw);
+          route.middlewareWebSocket!(websocket);
+          upgradedToWebSocket = true;
+          return const Response.ok(body: '');
+        }
+
+        if (pipelineBeforeResponse != null) return pipelineBeforeResponse;
+
+        // Cache only applies to static routes (no :param segments),
+        // idempotent methods (GET, HEAD), and routes without guards
+        // (guards evaluate per-request state, e.g. auth). Dynamic
+        // routes and stream responses are intentionally excluded.
+        final cacheable = route != null &&
+            !route.isDynamic &&
+            route.guards.isEmpty &&
+            _isCacheableMethod(request.method);
+        if (cacheable && isCached(route, request.method)) {
+          return getCachedResponse(route, request.method);
+        }
+
+        final response = await _internalHandler(
+          request,
+          route,
+          lookup.methodNotAllowed,
+          lookup.allowedMethods,
+        );
+        if (cacheable && !response.isStream) {
+          cacheResponse(route, request.method, response);
+        }
+        return response;
+      }
+
+      final Response routeResponse;
+      if (requestTimeout != null) {
+        final handlerFuture = resolveResponse();
+        routeResponse =
+            await handlerFuture.timeout(requestTimeout!, onTimeout: () {
+          request.markCancelled();
+          handlerFuture.ignore();
+          throw TimeoutException('Request timeout', requestTimeout);
+        });
+      } else {
+        routeResponse = await resolveResponse();
+      }
+
+      if (upgradedToWebSocket) {
+        await runPipeline(pipelineAfter, request);
+        statusForMetrics = HttpStatus.switchingProtocols;
+        return;
+      }
+
+      await _writeResponse(request, routeResponse);
+      await runPipeline(pipelineAfter, request);
+      _requestServerLog(request, routeResponse, duration: sw.elapsed);
+      statusForMetrics = routeResponse.status;
+    } catch (e) {
+      final info = errorInfoFor(
+        e,
+        request.uri.path,
+        requestId: logFormat == LogFormat.json ? request.requestId : null,
+      );
+      _errorServerLog(info.logMessage);
+      await writeErrorResponse(request, info);
+      statusForMetrics = info.status;
+    } finally {
+      pm?.recordHttpRequest(
+        method: request.method,
+        path: request.uri.path,
+        statusCode: statusForMetrics,
+        elapsed: sw.elapsed,
+      );
+      pm?.requestFinished();
+    }
+  }
+
+  Future<void> _writeResponse(
+      SparkyRequest request, Response routeResponse) async {
+    final response = request.raw.response;
+    response
+      ..headers.contentType = routeResponse.contentType ?? ContentType.json
+      ..statusCode = routeResponse.status;
+    if (routeResponse.headers != null) {
+      routeResponse.headers!.forEach((key, value) {
+        response.headers.set(key, value);
+      });
+    }
+    if (routeResponse.cookies != null) {
+      response.cookies.addAll(routeResponse.cookies!);
+    }
+
+    final acceptsGzip = request.headers[HttpHeaders.acceptEncodingHeader]
+            ?.any((e) => e.contains('gzip')) ==
+        true;
+
+    if (routeResponse.isStream) {
+      final stream = routeResponse.bodyStream!;
+      final canGzip = enableGzip &&
+          acceptsGzip &&
+          _isCompressibleContentType(routeResponse.contentType);
+      if (canGzip) {
+        response.headers.chunkedTransferEncoding = true;
+        response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+        response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+        await response.addStream(stream.transform(gzip.encoder));
+      } else {
+        await response.addStream(stream);
+      }
+    } else {
+      final responseBytes = routeResponse.bodyBytes;
+      final canGzip = enableGzip &&
+          acceptsGzip &&
+          !routeResponse.isBinary &&
+          responseBytes.length >= gzipMinLength;
+      if (canGzip) {
+        response.headers.set(HttpHeaders.varyHeader, 'Accept-Encoding');
+        response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+        response.add(gzip.encode(responseBytes));
+      } else {
+        response.add(responseBytes);
+      }
+    }
+    await response.close();
+  }
+
+  Future<Response> _internalHandler(
+    SparkyRequest request,
+    Route? route,
+    bool methodNotAllowed,
+    List<String> allowedMethods,
+  ) async {
+    if (route != null) {
+      for (final guard in route.guards) {
+        final guardResponse = await guard(request);
+        if (guardResponse != null) return guardResponse;
+      }
+      return route.middleware!(request);
+    }
+
+    if (methodNotAllowed) {
+      return Response.methodNotAllowed(
+        body: ErrorBody.toJson(HttpStatus.methodNotAllowed, 'Method Not Allowed'),
+        headers: {'Allow': allowedMethods.join(', ')},
+      );
     }
 
     if (routeNotFound?.middleware != null) {
       return routeNotFound!.middleware!(request);
     }
-    return const Response.notFound(
-        body: '{"errorCode":"404","message":"Not Found"}');
+    return Response.notFound(
+        body: ErrorBody.toJson(HttpStatus.notFound, 'Not Found'));
   }
 
   /// Starts a cluster of Sparky servers sharing the same port across isolates.

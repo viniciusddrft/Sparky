@@ -36,7 +36,7 @@ final class RouteGroup {
   /// so they run first during request handling.
   List<Route> flatten() {
     return _routes.map((route) {
-      final fullPath = '$prefix${route.name}';
+      final fullPath = '$prefix${route.path}';
       final combinedGuards = [...guards, ...route.guards];
       if (route is RouteHttp) {
         return RouteHttp(fullPath,

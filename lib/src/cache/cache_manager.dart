@@ -4,10 +4,18 @@
 /// so GET and POST to the same route have independent caches.
 ///
 /// Author: viniciusddrft
+library;
 
-part of '../sparky_server_base.dart';
+import '../response/response.dart';
+import '../route/route_base.dart';
 
-final class _CacheManager {
+/// Internal — not part of Sparky's public API.
+///
+/// Promoted from a private `_CacheManager` to a public class only because
+/// `SparkyBase` (in another library) needs to reference the type. Not
+/// re-exported via `package:sparky/sparky.dart`. Subject to change without
+/// notice across minor versions.
+final class CacheManager {
   final _cache = <_CacheKey, _CacheEntry>{};
   Duration? ttl;
   int? maxEntries;

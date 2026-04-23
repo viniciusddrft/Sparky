@@ -1,6 +1,6 @@
 // Author: viniciusddrft
 
-import 'dart:io';
+import 'package:sparky/src/request/sparky_request.dart';
 import 'package:sparky/src/response/response.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 
@@ -22,7 +22,13 @@ final class RateLimiter {
   final Duration window;
   final int maxClients;
   final bool trustProxyHeaders;
-  final String Function(HttpRequest request)? clientIdentifier;
+  final String Function(SparkyRequest request)? clientIdentifier;
+
+  /// Request paths that bypass the rate limiter (e.g. probes, scrape endpoints).
+  ///
+  /// Matched exactly against the request path (no query, no prefix match).
+  /// Typical values: `/health`, `/ready`, `/metrics`, `/openapi.json`, `/docs`.
+  final Set<String> ignorePaths;
 
   final _clients = <String, _ClientRecord>{};
   DateTime _lastCleanup = DateTime.now();
@@ -33,14 +39,17 @@ final class RateLimiter {
     this.maxClients = 10000,
     this.trustProxyHeaders = false,
     this.clientIdentifier,
-  });
+    Set<String>? ignorePaths,
+  }) : ignorePaths = ignorePaths ?? const {};
 
   /// Creates a rate limiting middleware that can be added to [pipelineBefore].
   ///
   /// Returns 429 Too Many Requests with a `Retry-After` header when the
   /// limit is exceeded. Returns `null` to continue the pipeline otherwise.
   MiddlewareNullable createMiddleware() {
-    return (HttpRequest request) async {
+    return (SparkyRequest request) async {
+      if (ignorePaths.contains(request.uri.path)) return null;
+
       _cleanupIfNeeded();
 
       final ip = clientIdentifier?.call(request) ??
@@ -86,7 +95,7 @@ final class RateLimiter {
   }
 }
 
-String _resolveClientIp(HttpRequest request, {required bool trustProxyHeaders}) {
+String _resolveClientIp(SparkyRequest request, {required bool trustProxyHeaders}) {
   if (trustProxyHeaders) {
     final forwardedFor = request.headers.value('x-forwarded-for');
     if (forwardedFor != null && forwardedFor.trim().isNotEmpty) {

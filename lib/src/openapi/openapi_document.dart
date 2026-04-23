@@ -28,7 +28,7 @@ Map<String, Object?> buildOpenApiDocument({
 
   for (final route in routes) {
     if (!route.isHttpRoute) continue;
-    final pathKey = sparkyPathToOpenApi(route.name);
+    final pathKey = sparkyPathToOpenApi(route.path);
     final pathItem = paths.putIfAbsent(pathKey, () => <String, Object?>{});
 
     final pathParams = route.pathParameterNames;

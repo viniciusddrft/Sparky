@@ -1,6 +1,7 @@
 // Author: viniciusddrft
 
 import 'dart:io';
+import 'package:sparky/src/request/sparky_request.dart';
 import 'package:sparky/src/response/response.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 
@@ -56,7 +57,7 @@ final class CorsConfig {
   /// `null` so the pipeline continues, but the CORS headers are set
   /// directly on the response.
   MiddlewareNullable createMiddleware() {
-    return (HttpRequest request) async {
+    return (SparkyRequest request) async {
       final requestOrigin = request.headers.value('origin');
       if (request.method == 'OPTIONS') {
         return Response.noContent(

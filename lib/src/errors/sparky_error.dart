@@ -19,13 +19,21 @@ final class ErrorRouteEmpty implements SparkyError {
   String toString() => 'Exception: Sparky booted with empty routes';
 }
 
-/// Error thrown when duplicate route names are detected during Sparky initialization.
+/// Error thrown when duplicate routes are detected during Sparky initialization.
 ///
-/// Sparky relies on each route having a unique name for correct operation. This error
-/// indicates that there were repeated route names in the provided routes list.
+/// Routes are identified by `(method, path)` for HTTP and by `path` for WebSocket.
+/// Registering the same `(method, path)` twice — or any HTTP route on the same
+/// path as a WebSocket route — triggers this error. The [duplicate] field
+/// describes the colliding key (e.g. `GET /users` or `/chat`).
 final class RoutesRepeated implements SparkyError {
+  final String duplicate;
+
+  RoutesRepeated() : duplicate = 'unknown';
+
+  RoutesRepeated.duplicate(this.duplicate);
+
   @override
   String toString() =>
-      'Exception: Sparky initialized with routes with repeated names';
+      'Exception: Sparky initialized with duplicate route: $duplicate';
 }
 

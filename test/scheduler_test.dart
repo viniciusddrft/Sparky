@@ -1,6 +1,7 @@
 // @author viniciusddrft
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:sparky/sparky.dart';
 import 'package:sparky/testing.dart';
@@ -213,6 +214,41 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       await client.close();
       expect(ran, isFalse);
+    });
+
+    test('default onError routes through Sparky Logs when user did not set one',
+        () async {
+      final tmp = await File(
+        '${Directory.systemTemp.path}/sparky_scheduler_log_${DateTime.now().microsecondsSinceEpoch}.log',
+      ).create();
+      addTearDown(() async {
+        if (await tmp.exists()) await tmp.delete();
+      });
+
+      final server = Sparky.single(
+        server: const ServerOptions(port: 0),
+        logConfig: LogConfig.writeLogs,
+        logFilePath: tmp.path,
+        routes: [
+          RouteHttp.get('/x',
+              middleware: (_) async => const Response.ok(body: '')),
+        ],
+        scheduler: SchedulerConfig(tasks: [
+          ScheduledTask.every(
+            interval: const Duration(milliseconds: 40),
+            name: 'failing-job',
+            job: () => throw StateError('boom-from-scheduler'),
+          ),
+        ]),
+      );
+      await server.ready;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await server.close();
+
+      final logContents = await tmp.readAsString();
+      expect(logContents, contains('-- error -->'));
+      expect(logContents, contains('[scheduler] failing-job failed:'));
+      expect(logContents, contains('boom-from-scheduler'));
     });
 
     test('stop awaits in-flight job', () async {

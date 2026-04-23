@@ -1,6 +1,6 @@
 // Author: viniciusddrft
 
-import 'dart:io';
+import 'package:sparky/src/request/sparky_request.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 
 /// Configuration for security headers middleware (Helmet-style).
@@ -106,7 +106,7 @@ final class SecurityHeadersConfig {
   /// The middleware applies the configured headers directly on the response
   /// and returns `null` so the pipeline continues to the route handler.
   MiddlewareNullable createMiddleware() {
-    return (HttpRequest request) async {
+    return (SparkyRequest request) async {
       final response = request.response;
 
       if (xFrameOptions != null) {

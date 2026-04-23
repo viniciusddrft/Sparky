@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:sparky/src/request/sparky_request.dart';
 import 'package:sparky/src/response/response.dart';
 import 'package:sparky/src/types/sparky_types.dart';
 
@@ -34,7 +35,7 @@ final class StaticFiles {
   /// Only handles GET and HEAD requests. Returns `null` for non-matching
   /// paths so the pipeline continues to the next handler.
   MiddlewareNullable createMiddleware() {
-    return (HttpRequest request) async {
+    return (SparkyRequest request) async {
       if (request.method != 'GET' && request.method != 'HEAD') return null;
 
       final normalizedUrlPath = _normalizeUrlPath(urlPath);

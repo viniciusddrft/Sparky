@@ -7,7 +7,15 @@ import '../types/sparky_types.dart';
 ///
 /// Supports dynamic path parameters using `:param` syntax (e.g. `/users/:id`).
 base class Route {
-  final String name;
+  /// The route path (e.g. `/users/:id`). Supports `:param` segments.
+  final String path;
+
+  /// Deprecated alias for [path]. The field was named `name` historically even
+  /// though the value is always a URL path, which was confusing. Use [path].
+  ///
+  /// Will be removed in 2.5.0.
+  @Deprecated('Use `path` instead. Renamed in 2.4.0; alias removed in 2.5.0.')
+  String get name => path;
   final Middleware? middleware;
   final MiddlewareWebSocket? middlewareWebSocket;
   final List<AcceptedMethods>? acceptedMethods;
@@ -24,7 +32,7 @@ base class Route {
   int get versionCache => _versionCache;
 
   /// Whether this route contains dynamic path segments (`:param`).
-  late final bool isDynamic = name.contains(':');
+  late final bool isDynamic = path.contains(':');
 
   /// Pre-compiled regex for matching dynamic routes.
   late final RegExp? _pattern = isDynamic ? _buildPattern() : null;
@@ -47,7 +55,7 @@ base class Route {
   /// Optional OpenAPI documentation for this operation (OpenAPI 3.x).
   final OpenApiOperation? openApi;
 
-  Route(this.name,
+  Route(this.path,
       {this.middleware,
       this.middlewareWebSocket,
       this.guards = const [],
@@ -67,13 +75,13 @@ base class Route {
     _versionCache += 1;
   }
 
-  /// Tries to match the given [path] against this route's pattern.
+  /// Tries to match the given [requestPath] against this route's pattern.
   /// Returns the extracted parameters if matched, or `null` if no match.
-  Map<String, String>? matchPath(String path) {
+  Map<String, String>? matchPath(String requestPath) {
     if (!isDynamic) {
-      return path == name ? const {} : null;
+      return requestPath == path ? const {} : null;
     }
-    final match = _pattern!.firstMatch(path);
+    final match = _pattern!.firstMatch(requestPath);
     if (match == null) return null;
 
     final params = <String, String>{};
@@ -84,7 +92,7 @@ base class Route {
   }
 
   RegExp _buildPattern() {
-    final segments = name.split('/');
+    final segments = path.split('/');
     final regexParts = segments.map((seg) {
       if (seg.startsWith(':')) return '([^/]+)';
       return RegExp.escape(seg);
@@ -93,7 +101,7 @@ base class Route {
   }
 
   List<String> _extractParamNames() {
-    return name
+    return path
         .split('/')
         .where((seg) => seg.startsWith(':'))
         .map((seg) => seg.substring(1))

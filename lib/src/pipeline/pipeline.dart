@@ -2,8 +2,9 @@
 ///
 /// This file defines the `Pipeline` class, which manages a list of middleware functions
 /// that can be executed before or after route processing in the Sparky server.
+library;
 
-part of '../sparky_server_base.dart';
+import '../types/sparky_types.dart';
 
 /// A class representing a pipeline of middleware functions.
 ///

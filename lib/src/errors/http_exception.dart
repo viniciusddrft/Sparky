@@ -16,6 +16,8 @@
 
 import 'dart:io';
 
+import '../handler/error_body.dart';
+
 /// Base class for HTTP exceptions that auto-map to status codes.
 ///
 /// When thrown inside a route handler, the server catches it and
@@ -45,13 +47,8 @@ class HttpException implements Exception {
   const HttpException(this.statusCode, this.message, {this.details});
 
   /// Returns the JSON body for this exception.
-  Map<String, Object> toJson() {
-    return {
-      'errorCode': statusCode.toString(),
-      'message': message,
-      if (details != null) ...details!,
-    };
-  }
+  Map<String, Object> toJson() =>
+      ErrorBody.toMap(statusCode, message, details: details);
 
   @override
   String toString() => 'HttpException($statusCode, $message)';

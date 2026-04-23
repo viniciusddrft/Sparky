@@ -84,6 +84,12 @@ final class Scheduler {
   bool _started = false;
   bool _stopped = false;
 
+  /// Injected by [Sparky] at init time so scheduler errors are forwarded to the
+  /// server's `Logs` channel. User-provided [SchedulerConfig.onError] takes
+  /// precedence; this fallback runs only when the user didn't set one.
+  void Function(ScheduledTask task, Object error, StackTrace stack)?
+      defaultOnError;
+
   Scheduler(this.config);
 
   bool get isRunning => _started && !_stopped;
@@ -120,7 +126,7 @@ final class Scheduler {
   }
 
   void _reportError(ScheduledTask task, Object error, StackTrace stack) {
-    final handler = config.onError;
+    final handler = config.onError ?? defaultOnError;
     if (handler != null) {
       handler(task, error, stack);
     } else {

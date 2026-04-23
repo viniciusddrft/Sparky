@@ -15,8 +15,7 @@ Sparky _failingOnSecondIsolate(int isolateIndex) {
     throw StateError('Simulated factory failure on isolate 1');
   }
   return Sparky.single(
-    port: 4598,
-    shared: true,
+    server: const ServerOptions(port: 4598, shared: true),
     logConfig: LogConfig.none,
     routes: [
       RouteHttp.get('/test',
@@ -28,8 +27,7 @@ Sparky _failingOnSecondIsolate(int isolateIndex) {
 /// Top-level factory for isolate tests (closures can't cross isolate boundaries).
 Sparky _createTestServer(int isolateIndex) {
   return Sparky.single(
-    port: 4599,
-    shared: true,
+    server: const ServerOptions(port: 4599, shared: true),
     logConfig: LogConfig.none,
     routes: [
       RouteHttp.get('/hello', middleware: (r) async {
@@ -67,6 +65,149 @@ void main() {
         ),
         throwsA(isA<RoutesRepeated>()),
       );
+    });
+
+    test('throws RoutesRepeated when GET shortcut collides with multi-method',
+        () {
+      expect(
+        () => Sparky.single(
+          routes: [
+            RouteHttp.get('/foo',
+                middleware: (r) async => const Response.ok(body: 'a')),
+            RouteHttp(
+              '/foo',
+              middleware: (r) async => const Response.ok(body: 'b'),
+              acceptedMethods: const [
+                AcceptedMethods.get,
+                AcceptedMethods.post,
+              ],
+            ),
+          ],
+          logConfig: LogConfig.none,
+        ),
+        throwsA(isA<RoutesRepeated>()),
+      );
+    });
+
+    test('throws RoutesRepeated when HTTP and WebSocket share the same path',
+        () {
+      expect(
+        () => Sparky.single(
+          routes: [
+            RouteHttp.get('/chat',
+                middleware: (r) async => const Response.ok(body: 'http')),
+            RouteWebSocket('/chat', middlewareWebSocket: (ws) async {}),
+          ],
+          logConfig: LogConfig.none,
+        ),
+        throwsA(isA<RoutesRepeated>()),
+      );
+    });
+  });
+
+  group('Route resolution by (method, path)', () {
+    late SparkyTestClient client;
+
+    tearDown(() async {
+      await client.close();
+    });
+
+    test('GET and POST on same path served by separate routes', () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/foo',
+              middleware: (r) async => const Response.ok(body: 'got')),
+          RouteHttp.post('/foo',
+              middleware: (r) async => const Response.ok(body: 'posted')),
+        ],
+      );
+
+      final getRes = await client.get('/foo');
+      expect(getRes.statusCode, 200);
+      expect(getRes.body, 'got');
+
+      final postRes = await client.post('/foo');
+      expect(postRes.statusCode, 200);
+      expect(postRes.body, 'posted');
+    });
+
+    test('POST on GET-only route returns 405 with Allow: GET', () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/hello',
+              middleware: (r) async => const Response.ok(body: 'got')),
+        ],
+      );
+
+      final res = await client.post('/hello');
+      expect(res.statusCode, HttpStatus.methodNotAllowed);
+      expect(res.headers.value('allow'), 'GET');
+    });
+
+    test('405 lists all accepted methods on multi-method static route',
+        () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/items',
+              middleware: (r) async => const Response.ok(body: 'list')),
+          RouteHttp.delete('/items',
+              middleware: (r) async => const Response.ok(body: 'gone')),
+        ],
+      );
+
+      final res = await client.post('/items');
+      expect(res.statusCode, HttpStatus.methodNotAllowed);
+      final allow = res.headers.value('allow');
+      expect(allow, isNotNull);
+      final methods = allow!.split(',').map((m) => m.trim()).toSet();
+      expect(methods, {'GET', 'DELETE'});
+    });
+
+    test('405 on dynamic route includes Allow header', () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/users/:id',
+              middleware: (r) async => const Response.ok(body: 'got')),
+        ],
+      );
+
+      final res = await client.post('/users/42');
+      expect(res.statusCode, HttpStatus.methodNotAllowed);
+      expect(res.headers.value('allow'), 'GET');
+    });
+
+    test('unknown path returns 404', () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/foo',
+              middleware: (r) async => const Response.ok(body: 'got')),
+        ],
+      );
+
+      final res = await client.get('/bar');
+      expect(res.statusCode, HttpStatus.notFound);
+    });
+
+    test('dynamic GET and POST on /users/:id served by separate routes',
+        () async {
+      client = await SparkyTestClient.boot(
+        routes: [
+          RouteHttp.get('/users/:id',
+              middleware: (r) async =>
+                  Response.ok(body: 'get ${r.pathParams['id']}')),
+          RouteHttp.post('/users/:id',
+              middleware: (r) async =>
+                  Response.ok(body: 'post ${r.pathParams['id']}')),
+        ],
+      );
+
+      final getRes = await client.get('/users/42');
+      expect(getRes.statusCode, 200);
+      expect(getRes.body, 'get 42');
+
+      final postRes = await client.post('/users/7');
+      expect(postRes.statusCode, 200);
+      expect(postRes.body, 'post 7');
     });
   });
 
@@ -274,8 +415,16 @@ void main() {
 
       final flattened = group.flatten();
       expect(flattened.length, 2);
-      expect(flattened[0].name, '/api/v1/users');
-      expect(flattened[1].name, '/api/v1/products');
+      expect(flattened[0].path, '/api/v1/users');
+      expect(flattened[1].path, '/api/v1/products');
+    });
+
+    test('deprecated `name` alias still returns the path', () {
+      final route = RouteHttp.get('/legacy',
+          middleware: (r) async => const Response.ok(body: ''));
+      // ignore: deprecated_member_use_from_same_package
+      expect(route.name, '/legacy');
+      expect(route.path, '/legacy');
     });
   });
 
@@ -319,7 +468,7 @@ void main() {
           RouteHttp.get('/hello',
               middleware: (r) async => const Response.ok(body: '{"msg":"hi"}')),
           RouteHttp.post('/echo', middleware: (r) async {
-            final body = await r.getJsonBody();
+            final body = await r.body.json();
             return Response.ok(body: body);
           }),
           RouteHttp.get('/users/:id', middleware: (r) async {
@@ -331,7 +480,7 @@ void main() {
                     '{"category":"${r.pathParams['category']}","itemId":"${r.pathParams['itemId']}"}');
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -606,9 +755,9 @@ void main() {
               middleware: (r) async =>
                   const Response.ok(body: '{"msg":"hello world"}')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        enableGzip: true,
+        compression: const CompressionConfig(enableGzip: true),
       );
       await server.ready;
       port = server.actualPort;
@@ -658,10 +807,9 @@ void main() {
             return Response.ok(body: largeBody);
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        enableGzip: true,
-        gzipMinLength: 1024,
+        compression: const CompressionConfig(enableGzip: true, gzipMinLength: 1024),
       );
       await server.ready;
       port = server.actualPort;
@@ -730,7 +878,7 @@ void main() {
             );
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -791,7 +939,7 @@ void main() {
           RouteHttp.get('/api/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: Pipeline()
           ..add(
@@ -937,13 +1085,13 @@ void main() {
       server = Sparky.single(
         routes: [
           RouteHttp.post('/echo', middleware: (r) async {
-            final body = await r.getRawBody();
+            final body = await r.body.text();
             return Response.ok(body: {'size': body.length});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        maxBodySize: 10,
+        limits: const LimitsConfig(maxBodySize: 10),
       );
       await server.ready;
       port = server.actualPort;
@@ -1001,9 +1149,9 @@ void main() {
             return Response.ok(body: {'hits': hits});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        cacheTtl: const Duration(milliseconds: 80),
+        cache: const CacheConfig(ttl: Duration(milliseconds: 80)),
       );
       await server.ready;
       port = server.actualPort;
@@ -1037,9 +1185,9 @@ void main() {
             return Response.ok(body: {'hits': twoHits});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        cacheMaxEntries: 1,
+        cache: const CacheConfig(maxEntries: 1),
       );
       await server.ready;
       port = server.actualPort;
@@ -1068,9 +1216,9 @@ void main() {
             return Response.ok(body: {'hits': hits});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        cacheTtl: const Duration(seconds: 10),
+        cache: const CacheConfig(ttl: Duration(seconds: 10)),
       );
       await server.ready;
       port = server.actualPort;
@@ -1106,7 +1254,7 @@ void main() {
             return Response.ok(body: {'session': value ?? 'none'});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -1148,7 +1296,7 @@ void main() {
           RouteHttp.get('/limited',
               middleware: (r) async => const Response.ok(body: {'ok': true})),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: Pipeline()
           ..add(
@@ -1197,7 +1345,7 @@ void main() {
             return Response.ok(body: {'preferred': preferred ?? 'none'});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -1272,9 +1420,9 @@ void main() {
               middleware: (r) async =>
                   const Response.ok(body: [0, 1, 2, 3, 4])),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        enableGzip: true,
+        compression: const CompressionConfig(enableGzip: true),
       );
       await server.ready;
       port = server.actualPort;
@@ -1318,9 +1466,9 @@ void main() {
           RouteHttp.get('/fast',
               middleware: (r) async => const Response.ok(body: {'ok': true})),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        requestTimeout: const Duration(milliseconds: 60),
+        limits: const LimitsConfig(requestTimeout: Duration(milliseconds: 60)),
       );
       await server.ready;
       port = server.actualPort;
@@ -1354,7 +1502,7 @@ void main() {
           RouteHttp.get('/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -1393,9 +1541,9 @@ void main() {
             return const Response.ok(body: {'ok': true});
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        requestTimeout: const Duration(milliseconds: 50),
+        limits: const LimitsConfig(requestTimeout: Duration(milliseconds: 50)),
       );
       await server.ready;
       port = server.actualPort;
@@ -1439,9 +1587,9 @@ void main() {
             );
           }),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        cacheTtl: const Duration(seconds: 10),
+        cache: const CacheConfig(ttl: Duration(seconds: 10)),
       );
       await server.ready;
       port = server.actualPort;
@@ -1488,9 +1636,9 @@ void main() {
           RouteHttp.get('/api',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        enableGzip: true,
+        compression: const CompressionConfig(enableGzip: true),
         pipelineBefore: Pipeline()
           ..add(StaticFiles(
             urlPath: '/static',
@@ -1519,9 +1667,9 @@ void main() {
           RouteHttp.get('/api',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
-        enableGzip: true,
+        compression: const CompressionConfig(enableGzip: true),
         pipelineBefore: Pipeline()
           ..add(StaticFiles(
             urlPath: '/static',
@@ -1554,7 +1702,7 @@ void main() {
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: pipeline,
       );
@@ -1583,7 +1731,7 @@ void main() {
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: pipeline,
       );
@@ -1607,7 +1755,7 @@ void main() {
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: pipeline,
       );
@@ -1635,7 +1783,7 @@ void main() {
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: pipeline,
       );
@@ -1665,7 +1813,7 @@ void main() {
           RouteHttp.get('/test',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         pipelineBefore: pipeline,
       );
@@ -1694,8 +1842,7 @@ void main() {
           RouteHttp.get('/ping',
               middleware: (r) async => const Response.ok(body: 'pong')),
         ],
-        port: 0,
-        shared: true,
+        server: const ServerOptions(port: 0, shared: true),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -1736,7 +1883,7 @@ void main() {
           RouteHttp.get('/check',
               middleware: (r) async => const Response.ok(body: 'ok')),
         ],
-        port: port,
+        server: ServerOptions(port: port),
         logConfig: LogConfig.none,
       );
       await server.ready;
@@ -1758,8 +1905,7 @@ void main() {
     test('throws when port: 0 with multiple isolates', () async {
       Sparky portZeroFactory(int index) {
         return Sparky.single(
-          port: 0,
-          shared: true,
+          server: const ServerOptions(port: 0, shared: true),
           logConfig: LogConfig.none,
           routes: [
             RouteHttp.get('/test',
@@ -1786,7 +1932,7 @@ void main() {
       // Port should be free after rollback
       await Future<void>.delayed(const Duration(milliseconds: 200));
       final server = Sparky.single(
-        port: 4598,
+        server: const ServerOptions(port: 4598),
         logConfig: LogConfig.none,
         routes: [
           RouteHttp.get('/check',
@@ -1817,7 +1963,7 @@ void main() {
 
       // Port should be free after graceful shutdown
       final server = Sparky.single(
-        port: port,
+        server: ServerOptions(port: port),
         logConfig: LogConfig.none,
         routes: [
           RouteHttp.get('/check',
@@ -1847,7 +1993,7 @@ void main() {
           RouteHttp.get('/hello',
               middleware: (r) async => const Response.ok(body: 'hi')),
           RouteHttp.post('/echo', middleware: (r) async {
-            final body = await r.getJsonBody();
+            final body = await r.body.json();
             return Response.ok(body: body);
           }),
           RouteHttp.put('/put',
@@ -1916,7 +2062,7 @@ void main() {
 
     test('from() wraps an existing server', () async {
       final server = Sparky.single(
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         routes: [
           RouteHttp.get('/test',
@@ -2570,7 +2716,7 @@ void main() {
       client = await SparkyTestClient.boot(
         routes: [
           RouteHttp.post('/upload', middleware: (r) async {
-            final form = await r.getMultipartData();
+            final form = await r.body.multipart();
             return Response.ok(body: {
               'fields': form.fields,
               'fileCount': form.fileList.length,
@@ -2670,7 +2816,7 @@ void main() {
 
     setUp(() async {
       server = Sparky.single(
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         routes: [
           RouteHttp.get('/events', middleware: (r) async {
@@ -2728,7 +2874,7 @@ void main() {
 
     setUp(() async {
       server = Sparky.single(
-        port: 0,
+        server: const ServerOptions(port: 0),
         logConfig: LogConfig.none,
         routes: [
           RouteHttp.get('/stream', middleware: (r) async {
