@@ -1,5 +1,9 @@
 # Welcome to Sparky
 
+[![CI](https://github.com/viniciusddrft/Sparky/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/viniciusddrft/Sparky/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/viniciusddrft/Sparky/branch/main/graph/badge.svg)](https://codecov.io/gh/viniciusddrft/Sparky)
+[![pub package](https://img.shields.io/pub/v/sparky.svg)](https://pub.dev/packages/sparky)
+
 [Switch to Portuguese](README.md)
 
 Sparky is a Dart package for building REST APIs in a simple way, with support for WebSocket, JWT authentication, CORS, dynamic routes and more.
@@ -755,6 +759,25 @@ await server.close();
 ```bash
 dart compile exe main.dart
 ```
+
+## Performance
+
+Baseline (Dart 3.11, Linux x86_64, commit `bfa4e42`, JIT):
+
+| Scenario                              |   µs/op |  ops/sec |
+|---------------------------------------|--------:|---------:|
+| Static route (10 routes)              |  199.43 |    5,014 |
+| Static route (100 routes)             |  117.31 |    8,524 |
+| Static route (1000 routes)            |  111.18 |    8,995 |
+| Dynamic route (50 routes, `:param`)   |  117.48 |    8,512 |
+| JSON body 1 KB                        |  159.20 |    6,281 |
+| JSON body 100 KB                      |  523.94 |    1,909 |
+| Plain text response                   |  112.85 |    8,861 |
+| Multipart parser (1 MB file)          | 2811.78 |      356 |
+| Multipart roundtrip (1 MB file)       | 5280.88 |      189 |
+
+Regenerate with `dart run benchmark/run.dart`. Use `--smoke` for a quick sanity check (used in CI).
+Numbers are machine-dependent; treat them as relative, not absolute.
 
 ## Contributing
 

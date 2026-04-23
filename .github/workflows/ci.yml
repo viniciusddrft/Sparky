@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Analyze + test (Dart ${{ matrix.sdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [stable]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Analyze (fatal warnings)
+        run: dart analyze --fatal-warnings
+
+      - name: Benchmark smoke run
+        run: dart run benchmark/run.dart --smoke
+
+      - name: Install coverage tool
+        run: dart pub global activate coverage
+
+      - name: Run tests with coverage
+        run: dart test --coverage=coverage
+
+      - name: Format coverage to LCOV
+        run: |
+          dart pub global run coverage:format_coverage \
+            --lcov \
+            --in=coverage \
+            --out=coverage/lcov.info \
+            --packages=.dart_tool/package_config.json \
+            --report-on=lib
+
+      - name: Compute coverage percentage
+        id: coverage
+        run: |
+          pct=$(awk -F: '/^DA:/ {total++; if ($2 ~ /,[1-9]/) hit++} END {if (total>0) printf "%.2f", (hit/total)*100; else print "0"}' coverage/lcov.info)
+          echo "Line coverage: ${pct}%"
+          echo "percent=${pct}" >> "$GITHUB_OUTPUT"
+          echo "## Coverage: ${pct}%" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce coverage threshold (>= 85%)
+        run: |
+          pct="${{ steps.coverage.outputs.percent }}"
+          awk -v p="$pct" 'BEGIN { exit (p+0 >= 85) ? 0 : 1 }' \
+            || { echo "::error::Coverage ${pct}% is below the 85% threshold."; exit 1; }
+
+      - name: Upload LCOV report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
